@@ -1,7 +1,14 @@
 --========================================================--
 --              ESP + TEAM CHECK + AIM LOCK               --
---                 YOUR ROBLOX GAME                       --
---        LocalScript -> StarterPlayerScripts              --
+--                    LOCAL SCRIPT                        --
+--========================================================--
+-- Place in:
+-- StarterPlayer > StarterPlayerScripts
+--
+-- Left Alt  = hold AIM
+-- Right Alt = show / hide menu
+--
+-- AIM does not use raycast, so walls do not block targeting.
 --========================================================--
 
 local Players = game:GetService("Players")
@@ -19,20 +26,22 @@ local TEAM_CHECK_ENABLED = false
 local AIM_ENABLED = false
 
 local AIM_HOLDING = false
-local MENU_VISIBLE = true
 
 local AIM_KEY = Enum.KeyCode.LeftAlt
 local MENU_KEY = Enum.KeyCode.RightAlt
 
 local FOV_RADIUS = 300
 
--- 1 = очень быстро
--- 0.5 = быстро
--- 0.2 = плавно
-local AIM_SMOOTHNESS = 0.45
+-- 1 = almost instant
+-- 0.5 = very fast
+-- 0.2 = smooth
+local AIM_SMOOTHNESS = 0.95
 
-local ESP_COLOR =
-	Color3.fromRGB(255, 60, 60)
+local ESP_COLOR = Color3.fromRGB(
+	255,
+	60,
+	60
+)
 
 --========================================================--
 -- CAMERA
@@ -48,13 +57,13 @@ local function getCamera()
 end
 
 --========================================================--
--- ESP CONTAINER
+-- ESP FOLDER
 --========================================================--
 
 local ESPFolder = Instance.new("Folder")
 
 ESPFolder.Name =
-	"GameESP"
+	"ESP_Objects"
 
 ESPFolder.Parent =
 	workspace
@@ -64,9 +73,6 @@ local ESPObjects = {}
 --========================================================--
 -- TEAM CHECK
 --========================================================--
-
--- Эта функция оставлена по той же логике,
--- что и твой рабочий вариант.
 
 local function isEnemy(Player)
 
@@ -207,7 +213,7 @@ Gui.Parent =
 	)
 
 --========================================================--
--- MAIN WINDOW
+-- MAIN
 --========================================================--
 
 local Main =
@@ -325,7 +331,7 @@ Title.Parent =
 	Main
 
 --========================================================--
--- BUTTON CREATOR
+-- BUTTON
 --========================================================--
 
 local function createButton(
@@ -436,7 +442,7 @@ Info.Size =
 		1,
 		-20,
 		0,
-		35
+		40
 	)
 
 Info.Position =
@@ -449,7 +455,7 @@ Info.BackgroundTransparency =
 	1
 
 Info.Text =
-	"Left Alt = AIM HOLD\nRight Alt = MENU"
+	"Left Alt  -  AIM\nRight Alt -  MENU"
 
 Info.TextColor3 =
 	Color3.fromRGB(
@@ -483,15 +489,10 @@ local function updateButton(
 	Enabled
 )
 
-	Button.Text =
-		Name ..
-		(
-			Enabled
-			and ": ON"
-			or ": OFF"
-		)
-
 	if Enabled then
+
+		Button.Text =
+			Name .. ": ON"
 
 		Button.BackgroundColor3 =
 			Color3.fromRGB(
@@ -508,6 +509,9 @@ local function updateButton(
 			)
 
 	else
+
+		Button.Text =
+			Name .. ": OFF"
 
 		Button.BackgroundColor3 =
 			Color3.fromRGB(
@@ -612,20 +616,20 @@ FOVStroke.Parent =
 	FOV
 
 --========================================================--
--- CHARACTER / TARGET PART
+-- AIM PART SEARCH
 --========================================================--
 
-local TargetNames = {
+local AimPartNames = {
 
 	"Head",
 
 	"UpperTorso",
 
-	"LowerTorso",
-
 	"Torso",
 
 	"HumanoidRootPart",
+
+	"LowerTorso",
 
 	"Chest",
 
@@ -633,11 +637,13 @@ local TargetNames = {
 
 	"Root",
 
-	"Pelvis"
+	"Pelvis",
+
+	"Spine"
 
 }
 
-local function findPart(
+local function findNamedPart(
 	Character,
 	Name
 )
@@ -657,11 +663,7 @@ local function findPart(
 	return nil
 end
 
---========================================================--
--- GET TARGET PART
---========================================================--
-
-local function getTargetPart(
+local function getAimPart(
 	Character
 )
 
@@ -669,13 +671,13 @@ local function getTargetPart(
 		return nil
 	end
 
-	-- Сначала стандартные точки
+	-- First try known body parts.
 	for _, Name in ipairs(
-		TargetNames
+		AimPartNames
 	) do
 
 		local Part =
-			findPart(
+			findNamedPart(
 				Character,
 				Name
 			)
@@ -685,33 +687,26 @@ local function getTargetPart(
 		end
 	end
 
-	-- Для полностью кастомной модели
-	-- ищем BasePart внутри модели.
-	local Fallback = nil
-
+	-- Fallback for completely custom rigs.
 	for _, Object in ipairs(
 		Character:GetDescendants()
 	) do
 
-		if Object:IsA("BasePart") then
+		if Object:IsA("BasePart")
+			and Object.Name ~= "Handle" then
 
-			if Object.Name ~= "Handle" then
-				Fallback = Object
-				break
-			end
+			return Object
 		end
 	end
 
-	return Fallback
+	return nil
 end
 
 --========================================================--
--- CHECK ALIVE
+-- ALIVE CHECK
 --========================================================--
 
-local function isAlive(
-	Player
-)
+local function isAlive(Player)
 
 	local Character =
 		Player.Character
@@ -726,32 +721,22 @@ local function isAlive(
 		)
 
 	if Humanoid then
-
 		return Humanoid.Health > 0
 	end
 
-	-- Кастомный персонаж без Humanoid
 	return true
 end
 
 --========================================================--
--- SCREEN DISTANCE
+-- TARGET SEARCH
 --========================================================--
 
-local function getScreenDistance(
-	Part,
-	CameraObject
-)
+local function findClosestTarget()
 
-	local ScreenPosition,
-	Visible =
-		CameraObject:WorldToViewportPoint(
-			Part.Position
-		)
+	local CameraObject =
+		getCamera()
 
-	if not Visible
-		or ScreenPosition.Z <= 0 then
-
+	if not CameraObject then
 		return nil
 	end
 
@@ -761,42 +746,16 @@ local function getScreenDistance(
 			CameraObject.ViewportSize.Y / 2
 		)
 
-	local Position =
-		Vector2.new(
-			ScreenPosition.X,
-			ScreenPosition.Y
-		)
-
-	return (
-		Position -
-		Center
-	).Magnitude
-end
-
---========================================================--
--- FIND CLOSEST ENEMY
---========================================================--
-
-local function findClosestEnemy()
-
-	local CameraObject =
-		getCamera()
-
-	if not CameraObject then
-		return nil
-	end
-
-	local BestPart =
+	local ClosestPart =
 		nil
 
-	local BestDistance =
+	local ClosestDistance =
 		FOV_RADIUS
 
 	for _, Player in ipairs(
 		Players:GetPlayers()
 	) do
 
-		-- Team Check
 		if Player ~= LocalPlayer
 			and isEnemy(Player)
 			and isAlive(Player) then
@@ -805,32 +764,50 @@ local function findClosestEnemy()
 				Player.Character
 
 			local Part =
-				getTargetPart(
+				getAimPart(
 					Character
 				)
 
 			if Part then
 
-				local Distance =
-					getScreenDistance(
-						Part,
-						CameraObject
+				-- No raycast here.
+				-- Walls therefore do not block
+				-- target selection.
+
+				local ScreenPosition =
+					CameraObject:WorldToViewportPoint(
+						Part.Position
 					)
 
-				if Distance
-					and Distance < BestDistance then
+				if ScreenPosition.Z > 0 then
 
-					BestDistance =
-						Distance
+					local Position =
+						Vector2.new(
+							ScreenPosition.X,
+							ScreenPosition.Y
+						)
 
-					BestPart =
-						Part
+					local Distance =
+						(
+							Position -
+							Center
+						).Magnitude
+
+					if Distance <
+						ClosestDistance then
+
+						ClosestDistance =
+							Distance
+
+						ClosestPart =
+							Part
+					end
 				end
 			end
 		end
 	end
 
-	return BestPart
+	return ClosestPart
 end
 
 --========================================================--
@@ -850,18 +827,24 @@ local function aimAt(
 		return
 	end
 
-	local CameraPosition =
-		CameraObject.CFrame.Position
-
-	local Difference =
-		Part.Position -
-		CameraPosition
-
-	if Difference.Magnitude <= 0.001 then
+	if not Part.Parent then
 		return
 	end
 
-	local Desired =
+	local CameraPosition =
+		CameraObject.CFrame.Position
+
+	local Direction =
+		Part.Position -
+		CameraPosition
+
+	if Direction.Magnitude <=
+		0.001 then
+
+		return
+	end
+
+	local TargetCFrame =
 		CFrame.lookAt(
 			CameraPosition,
 			Part.Position
@@ -869,7 +852,7 @@ local function aimAt(
 
 	CameraObject.CFrame =
 		CameraObject.CFrame:Lerp(
-			Desired,
+			TargetCFrame,
 			AIM_SMOOTHNESS
 		)
 end
@@ -928,7 +911,7 @@ UserInputService.InputBegan:Connect(
 			return
 		end
 
-		-- LEFT ALT = AIM
+		-- LEFT ALT
 		if Input.KeyCode ==
 			AIM_KEY then
 
@@ -938,15 +921,12 @@ UserInputService.InputBegan:Connect(
 			return
 		end
 
-		-- RIGHT ALT = MENU
+		-- RIGHT ALT
 		if Input.KeyCode ==
 			MENU_KEY then
 
-			MENU_VISIBLE =
-				not MENU_VISIBLE
-
 			Main.Visible =
-				MENU_VISIBLE
+				not Main.Visible
 
 			return
 		end
@@ -966,16 +946,12 @@ UserInputService.InputEnded:Connect(
 )
 
 --========================================================--
--- PLAYER SETUP
+-- PLAYER EVENTS
 --========================================================--
 
-local function setupPlayer(
-	Player
-)
+local function setupPlayer(Player)
 
-	if Player ==
-		LocalPlayer then
-
+	if Player == LocalPlayer then
 		return
 	end
 
@@ -984,19 +960,16 @@ local function setupPlayer(
 
 			task.wait(0.5)
 
-			createESP(
-				Player
-			)
+			createESP(Player)
 		end
 	)
 
 	Player.CharacterRemoving:Connect(
 		function()
 
-			removeESP(
-				Player
-			)
-	end)
+			removeESP(Player)
+		end
+	)
 
 	Player:GetPropertyChangedSignal(
 		"Team"
@@ -1004,46 +977,27 @@ local function setupPlayer(
 		function()
 
 			if TEAM_CHECK_ENABLED then
-				createESP(
-					Player
-				)
+				createESP(Player)
 			end
 		end
 	)
 end
 
---========================================================--
--- EXISTING PLAYERS
---========================================================--
-
 for _, Player in ipairs(
 	Players:GetPlayers()
 ) do
 
-	setupPlayer(
-		Player
-	)
+	setupPlayer(Player)
 end
 
---========================================================--
--- NEW PLAYERS
---========================================================--
-
 Players.PlayerAdded:Connect(
-	function(Player)
-
-		setupPlayer(
-			Player
-		)
-	end
+	setupPlayer
 )
 
 Players.PlayerRemoving:Connect(
 	function(Player)
 
-		removeESP(
-			Player
-		)
+		removeESP(Player)
 	end
 )
 
@@ -1076,7 +1030,7 @@ RunService.RenderStepped:Connect(
 			return
 		end
 
-		-- FOV всегда по центру камеры
+		-- Keep FOV centered.
 		local Viewport =
 			CameraObject.ViewportSize
 
@@ -1086,28 +1040,24 @@ RunService.RenderStepped:Connect(
 				Viewport.Y / 2
 			)
 
-		-- AIM выключен
+		-- AIM disabled.
 		if not AIM_ENABLED then
 			return
 		end
 
-		-- ALT не зажат
+		-- Left Alt released.
 		if not AIM_HOLDING then
 			return
 		end
 
-		-- Ищем противника
 		local Target =
-			findClosestEnemy()
+			findClosestTarget()
 
 		if not Target then
 			return
 		end
 
-		-- Наводимся
-		aimAt(
-			Target
-		)
+		aimAt(Target)
 	end
 )
 
