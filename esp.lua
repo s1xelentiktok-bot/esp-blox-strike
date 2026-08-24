@@ -1,7 +1,6 @@
 --==================================================
--- ESP + AUTO TEAM CHECK + FOV LOCK
--- LocalScript
--- StarterPlayer > StarterPlayerScripts
+-- ESP SYSTEM
+-- LocalScript -> StarterPlayerScripts
 --==================================================
 
 local Players = game:GetService("Players")
@@ -9,7 +8,6 @@ local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 
 --==================================================
 -- SETTINGS
@@ -18,9 +16,7 @@ local Camera = workspace.CurrentCamera
 local ESP_ENABLED = false
 local TEAM_CHECK_ENABLED = false
 local AIM_ENABLED = false
-
-local AIM_KEY = Enum.KeyCode.LeftAlt
-local MENU_KEY = Enum.KeyCode.LeftAlt
+local AIM_HOLDING = false
 
 local FOV_RADIUS = 300
 local AIM_SPEED = 0.35
@@ -28,128 +24,274 @@ local AIM_SPEED = 0.35
 local ESP_COLOR = Color3.fromRGB(255, 60, 60)
 
 --==================================================
--- ESP FOLDER
+-- FOLDER
 --==================================================
 
 local ESPFolder = Instance.new("Folder")
-ESPFolder.Name = "GameESP"
+ESPFolder.Name = "ESPObjects"
 ESPFolder.Parent = workspace
 
 local ESPObjects = {}
 
 --==================================================
+-- GUI
+--==================================================
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "GameESP"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.fromOffset(290, 225)
+Main.Position = UDim2.fromOffset(25, 25)
+Main.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.ZIndex = 10
+Main.Parent = Gui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = Main
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Thickness = 1
+MainStroke.Color = Color3.fromRGB(70, 70, 80)
+MainStroke.Parent = Main
+
+--==================================================
+-- TITLE
+--==================================================
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -20, 0, 35)
+Title.Position = UDim2.fromOffset(10, 7)
+Title.BackgroundTransparency = 1
+Title.Text = "ESP / AIM"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.TextSize = 22
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.ZIndex = 11
+Title.Parent = Main
+
+--==================================================
+-- BUTTON
+--==================================================
+
+local function createButton(name, y)
+
+	local Button = Instance.new("TextButton")
+
+	Button.Name = name
+	Button.Size = UDim2.new(1, -20, 0, 38)
+	Button.Position = UDim2.fromOffset(10, y)
+
+	Button.BackgroundColor3 =
+		Color3.fromRGB(75, 30, 30)
+
+	Button.BorderSizePixel = 0
+
+	Button.TextColor3 =
+		Color3.fromRGB(255, 100, 100)
+
+	Button.TextSize = 15
+	Button.Font = Enum.Font.GothamBold
+
+	Button.AutoButtonColor = true
+	Button.Active = true
+	Button.Selectable = true
+	Button.ZIndex = 20
+
+	Button.Parent = Main
+
+	local Corner = Instance.new("UICorner")
+	Corner.CornerRadius = UDim.new(0, 7)
+	Corner.Parent = Button
+
+	return Button
+end
+
+local ESPButton =
+	createButton("ESPButton", 48)
+
+local TeamButton =
+	createButton("TeamButton", 91)
+
+local AimButton =
+	createButton("AimButton", 134)
+
+local Info = Instance.new("TextLabel")
+Info.Size = UDim2.new(1, -20, 0, 25)
+Info.Position = UDim2.fromOffset(10, 180)
+Info.BackgroundTransparency = 1
+Info.Text = "Left Alt = AIM | Right Alt = MENU"
+Info.TextColor3 = Color3.fromRGB(150, 150, 155)
+Info.TextSize = 11
+Info.Font = Enum.Font.Gotham
+Info.TextXAlignment = Enum.TextXAlignment.Left
+Info.ZIndex = 11
+Info.Parent = Main
+
+--==================================================
+-- BUTTON UPDATE
+--==================================================
+
+local function setButtonState(Button, enabled, text)
+
+	Button.Text =
+		text .. (enabled and ": ON" or ": OFF")
+
+	if enabled then
+
+		Button.BackgroundColor3 =
+			Color3.fromRGB(30, 85, 40)
+
+		Button.TextColor3 =
+			Color3.fromRGB(100, 255, 120)
+
+	else
+
+		Button.BackgroundColor3 =
+			Color3.fromRGB(75, 30, 30)
+
+		Button.TextColor3 =
+			Color3.fromRGB(255, 100, 100)
+	end
+end
+
+local function updateButtons()
+
+	setButtonState(
+		ESPButton,
+		ESP_ENABLED,
+		"ESP"
+	)
+
+	setButtonState(
+		TeamButton,
+		TEAM_CHECK_ENABLED,
+		"TEAM CHECK"
+	)
+
+	setButtonState(
+		AimButton,
+		AIM_ENABLED,
+		"AIM LOCK"
+	)
+end
+
+--==================================================
 -- TEAM DETECTION
 --==================================================
 
-local function readTeam(container)
-	if not container then
+local function getTeam(player)
+
+	if not player then
 		return nil
 	end
 
-	-- Attribute
-	local attribute = container:GetAttribute("Team")
-
-	if attribute ~= nil then
-		return attribute
+	-- Стандартная Roblox Team
+	if player.Team then
+		return player.Team
 	end
 
-	-- Другие распространённые названия атрибутов
+	-- Attributes
 	for _, name in ipairs({
+		"Team",
 		"TeamName",
-		"TeamId",
-		"TeamID",
 		"Faction",
 		"Side"
 	}) do
-		local value = container:GetAttribute(name)
+
+		local value =
+			player:GetAttribute(name)
 
 		if value ~= nil then
 			return value
 		end
 	end
 
-	-- Значение Team внутри объекта
-	local teamObject = container:FindFirstChild("Team")
+	-- Values
+	for _, name in ipairs({
+		"Team",
+		"TeamName",
+		"Faction",
+		"Side"
+	}) do
 
-	if teamObject then
+		local object =
+			player:FindFirstChild(name)
 
-		if teamObject:IsA("StringValue")
-			or teamObject:IsA("IntValue")
-			or teamObject:IsA("NumberValue")
-			or teamObject:IsA("BoolValue") then
+		if object then
 
-			return teamObject.Value
+			if object:IsA("StringValue")
+				or object:IsA("IntValue")
+				or object:IsA("NumberValue") then
+
+				return object.Value
+			end
+
+			if object:IsA("ObjectValue") then
+				return object.Value
+			end
 		end
+	end
 
-		if teamObject:IsA("ObjectValue") then
-			return teamObject.Value
+	-- Character
+	local character = player.Character
+
+	if character then
+
+		for _, name in ipairs({
+			"Team",
+			"TeamName",
+			"Faction",
+			"Side"
+		}) do
+
+			local value =
+				character:GetAttribute(name)
+
+			if value ~= nil then
+				return value
+			end
 		end
 	end
 
 	return nil
 end
 
-local function getPlayerTeam(player)
-
-	-- Обычная Roblox Team
-	if player.Team ~= nil then
-		return player.Team
-	end
-
-	-- Атрибуты/значения Player
-	local playerTeam = readTeam(player)
-
-	if playerTeam ~= nil then
-		return playerTeam
-	end
-
-	-- Атрибуты/значения Character
-	if player.Character then
-		local characterTeam = readTeam(player.Character)
-
-		if characterTeam ~= nil then
-			return characterTeam
-		end
-	end
-
-	return nil
-end
-
-local function teamsEqual(a, b)
-
-	if a == nil or b == nil then
-		return false
-	end
-
-	if typeof(a) == "Instance"
-		and typeof(b) == "Instance" then
-
-		return a == b
-	end
-
-	return tostring(a) == tostring(b)
-end
-
-local function isEnemy(player)
-
-	if player == LocalPlayer then
-		return false
-	end
+local function sameTeam(player)
 
 	if not TEAM_CHECK_ENABLED then
-		return true
+		return false
 	end
 
-	local myTeam = getPlayerTeam(LocalPlayer)
-	local otherTeam = getPlayerTeam(player)
+	local myTeam =
+		getTeam(LocalPlayer)
 
-	-- Если команды неизвестны,
-	-- оставляем игрока видимым.
-	if myTeam == nil or otherTeam == nil then
-		return true
+	local otherTeam =
+		getTeam(player)
+
+	if myTeam == nil
+		or otherTeam == nil then
+
+		return false
 	end
 
-	return not teamsEqual(myTeam, otherTeam)
+	if typeof(myTeam) == "Instance"
+		and typeof(otherTeam) == "Instance" then
+
+		return myTeam == otherTeam
+	end
+
+	return tostring(myTeam) ==
+		tostring(otherTeam)
 end
 
 --==================================================
@@ -158,12 +300,14 @@ end
 
 local function removeESP(player)
 
-	local object = ESPObjects[player]
+	local highlight =
+		ESPObjects[player]
 
-	if object then
-		object:Destroy()
-		ESPObjects[player] = nil
+	if highlight then
+		highlight:Destroy()
 	end
+
+	ESPObjects[player] = nil
 end
 
 local function createESP(player)
@@ -174,40 +318,50 @@ local function createESP(player)
 		return
 	end
 
-	if not isEnemy(player) then
+	if sameTeam(player) then
 		return
 	end
 
-	local character = player.Character
+	local character =
+		player.Character
 
 	if not character then
 		return
 	end
 
-	local highlight = Instance.new("Highlight")
+	local highlight =
+		Instance.new("Highlight")
 
-	highlight.Name = "PlayerESP"
+	highlight.Name = "ESP"
 	highlight.Adornee = character
 
 	highlight.DepthMode =
 		Enum.HighlightDepthMode.AlwaysOnTop
 
-	highlight.FillColor = ESP_COLOR
-	highlight.FillTransparency = 0.78
+	highlight.FillColor =
+		ESP_COLOR
+
+	highlight.FillTransparency =
+		0.78
 
 	highlight.OutlineColor =
-		Color3.fromRGB(255, 255, 255)
+		Color3.new(1, 1, 1)
 
-	highlight.OutlineTransparency = 0
+	highlight.OutlineTransparency =
+		0
 
-	highlight.Parent = ESPFolder
+	highlight.Parent =
+		ESPFolder
 
-	ESPObjects[player] = highlight
+	ESPObjects[player] =
+		highlight
 end
 
 local function refreshESP()
 
-	for _, player in ipairs(Players:GetPlayers()) do
+	for _, player in ipairs(
+		Players:GetPlayers()
+	) do
 
 		if player ~= LocalPlayer then
 			createESP(player)
@@ -216,166 +370,12 @@ local function refreshESP()
 end
 
 --==================================================
--- GUI
---==================================================
-
-local Gui = Instance.new("ScreenGui")
-Gui.Name = "ESP_GUI"
-Gui.ResetOnSpawn = false
-Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local Main = Instance.new("Frame")
-
-Main.Size = UDim2.fromOffset(285, 220)
-Main.Position = UDim2.fromOffset(20, 20)
-
-Main.BackgroundColor3 =
-	Color3.fromRGB(24, 24, 28)
-
-Main.BorderSizePixel = 0
-Main.Parent = Gui
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 10)
-MainCorner.Parent = Main
-
-local Title = Instance.new("TextLabel")
-
-Title.Size = UDim2.new(1, -20, 0, 35)
-Title.Position = UDim2.fromOffset(10, 5)
-
-Title.BackgroundTransparency = 1
-
-Title.Text = "ESP / AIM"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.TextSize = 22
-Title.Font = Enum.Font.GothamBold
-
-Title.TextXAlignment =
-	Enum.TextXAlignment.Left
-
-Title.Parent = Main
-
-local function makeButton(y)
-
-	local button = Instance.new("TextButton")
-
-	button.Size =
-		UDim2.new(1, -20, 0, 38)
-
-	button.Position =
-		UDim2.fromOffset(10, y)
-
-	button.BackgroundColor3 =
-		Color3.fromRGB(80, 30, 30)
-
-	button.BorderSizePixel = 0
-
-	button.TextColor3 =
-		Color3.fromRGB(255, 90, 90)
-
-	button.TextSize = 15
-	button.Font = Enum.Font.GothamBold
-
-	button.Parent = Main
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 7)
-	corner.Parent = button
-
-	return button
-end
-
-local ESPButton = makeButton(45)
-local TeamButton = makeButton(87)
-local AimButton = makeButton(129)
-
-local Hint = Instance.new("TextLabel")
-
-Hint.Size =
-	UDim2.new(1, -20, 0, 25)
-
-Hint.Position =
-	UDim2.fromOffset(10, 175)
-
-Hint.BackgroundTransparency = 1
-
-Hint.Text =
-	"Left Alt = AIM • Right Alt = MENU"
-
-Hint.TextColor3 =
-	Color3.fromRGB(150, 150, 155)
-
-Hint.TextSize = 11
-Hint.Font = Enum.Font.Gotham
-
-Hint.TextXAlignment =
-	Enum.TextXAlignment.Left
-
-Hint.Parent = Main
-
---==================================================
--- BUTTON STATE
---==================================================
-
-local function updateButtons()
-
-	ESPButton.Text =
-		ESP_ENABLED
-		and "ESP: ON"
-		or "ESP: OFF"
-
-	ESPButton.BackgroundColor3 =
-		ESP_ENABLED
-		and Color3.fromRGB(30, 80, 40)
-		or Color3.fromRGB(80, 30, 30)
-
-	ESPButton.TextColor3 =
-		ESP_ENABLED
-		and Color3.fromRGB(90, 255, 110)
-		or Color3.fromRGB(255, 90, 90)
-
-
-	TeamButton.Text =
-		TEAM_CHECK_ENABLED
-		and "TEAM CHECK: ON"
-		or "TEAM CHECK: OFF"
-
-	TeamButton.BackgroundColor3 =
-		TEAM_CHECK_ENABLED
-		and Color3.fromRGB(30, 80, 40)
-		or Color3.fromRGB(80, 30, 30)
-
-	TeamButton.TextColor3 =
-		TEAM_CHECK_ENABLED
-		and Color3.fromRGB(90, 255, 110)
-		or Color3.fromRGB(255, 90, 90)
-
-
-	AimButton.Text =
-		AIM_ENABLED
-		and "AIM LOCK: ON"
-		or "AIM LOCK: OFF"
-
-	AimButton.BackgroundColor3 =
-		AIM_ENABLED
-		and Color3.fromRGB(30, 80, 40)
-		or Color3.fromRGB(80, 30, 30)
-
-	AimButton.TextColor3 =
-		AIM_ENABLED
-		and Color3.fromRGB(90, 255, 110)
-		or Color3.fromRGB(255, 90, 90)
-end
-
---==================================================
 -- FOV
 --==================================================
 
 local FOV = Instance.new("Frame")
 
-FOV.Name = "AimFOV"
-
+FOV.Name = "FOV"
 FOV.Size = UDim2.fromOffset(
 	FOV_RADIUS * 2,
 	FOV_RADIUS * 2
@@ -386,19 +386,25 @@ FOV.AnchorPoint =
 
 FOV.BackgroundTransparency = 1
 FOV.Visible = false
-
+FOV.ZIndex = 3
 FOV.Parent = Gui
 
-local FOVCorner = Instance.new("UICorner")
-FOVCorner.CornerRadius = UDim.new(1, 0)
+local FOVCorner =
+	Instance.new("UICorner")
+
+FOVCorner.CornerRadius =
+	UDim.new(1, 0)
+
 FOVCorner.Parent = FOV
 
-local FOVStroke = Instance.new("UIStroke")
+local FOVStroke =
+	Instance.new("UIStroke")
 
 FOVStroke.Thickness = 2
-FOVStroke.Color = Color3.new(1, 1, 1)
-FOVStroke.Transparency = 0.2
+FOVStroke.Color =
+	Color3.new(1, 1, 1)
 
+FOVStroke.Transparency = 0.25
 FOVStroke.Parent = FOV
 
 --==================================================
@@ -411,7 +417,6 @@ local function getAimPart(character)
 		return nil
 	end
 
-	-- Приоритетные точки
 	for _, name in ipairs({
 		"Head",
 		"UpperTorso",
@@ -419,52 +424,46 @@ local function getAimPart(character)
 		"HumanoidRootPart"
 	}) do
 
-		local part = character:FindFirstChild(name)
+		local part =
+			character:FindFirstChild(name)
 
-		if part and part:IsA("BasePart") then
+		if part
+			and part:IsA("BasePart") then
+
 			return part
 		end
 	end
 
-	-- Кастомная модель:
-	-- берём ближайший подходящий BasePart
-	local bestPart = nil
-
-	for _, object in ipairs(character:GetDescendants()) do
-
-		if object:IsA("BasePart") then
-
-			if object.Name ~= "Handle" then
-				bestPart = object
-				break
-			end
-		end
-	end
-
-	return bestPart
+	return character:FindFirstChildWhichIsA(
+		"BasePart"
+	)
 end
 
 --==================================================
--- AIM TARGET
+-- FIND TARGET
 --==================================================
 
 local function getClosestTarget()
 
-	local center = Vector2.new(
-		Camera.ViewportSize.X / 2,
-		Camera.ViewportSize.Y / 2
-	)
+	local center =
+		Vector2.new(
+			Camera.ViewportSize.X / 2,
+			Camera.ViewportSize.Y / 2
+		)
 
-	local closestPart = nil
-	local closestDistance = FOV_RADIUS
+	local closest = nil
+	local closestDistance =
+		FOV_RADIUS
 
-	for _, player in ipairs(Players:GetPlayers()) do
+	for _, player in ipairs(
+		Players:GetPlayers()
+	) do
 
 		if player ~= LocalPlayer
-			and isEnemy(player) then
+			and not sameTeam(player) then
 
-			local character = player.Character
-			local part = getAimPart(character)
+			local character =
+				player.Character
 
 			local humanoid =
 				character
@@ -472,101 +471,129 @@ local function getClosestTarget()
 					"Humanoid"
 				)
 
-			if character
-				and part
-				and humanoid
-				and humanoid.Health > 0 then
+			local part =
+				getAimPart(character)
 
-				local screenPosition, visible =
+			if character
+				and humanoid
+				and humanoid.Health > 0
+				and part then
+
+				local screen, visible =
 					Camera:WorldToViewportPoint(
 						part.Position
 					)
 
 				if visible
-					and screenPosition.Z > 0 then
+					and screen.Z > 0 then
 
-					local screen =
+					local position =
 						Vector2.new(
-							screenPosition.X,
-							screenPosition.Y
+							screen.X,
+							screen.Y
 						)
 
 					local distance =
-						(screen - center).Magnitude
+						(position - center).Magnitude
 
-					if distance < closestDistance then
+					if distance <
+						closestDistance then
 
-						closestDistance = distance
-						closestPart = part
+						closestDistance =
+							distance
+
+						closest =
+							part
 					end
 				end
 			end
 		end
 	end
 
-	return closestPart
+	return closest
 end
 
 --==================================================
 -- INPUT
 --==================================================
 
-local aimHolding = false
+UIS.InputBegan:Connect(
+	function(input, processed)
 
-UIS.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
 
-	if processed then
-		return
+		if input.KeyCode ==
+			Enum.KeyCode.LeftAlt then
+
+			AIM_HOLDING = true
+
+		elseif input.KeyCode ==
+			Enum.KeyCode.RightAlt then
+
+			Main.Visible =
+				not Main.Visible
+		end
 	end
+)
 
-	if input.KeyCode == AIM_KEY then
-		aimHolding = true
+UIS.InputEnded:Connect(
+	function(input)
+
+		if input.KeyCode ==
+			Enum.KeyCode.LeftAlt then
+
+			AIM_HOLDING = false
+		end
 	end
-end)
-
-UIS.InputEnded:Connect(function(input)
-
-	if input.KeyCode == AIM_KEY then
-		aimHolding = false
-	end
-end)
+)
 
 --==================================================
--- BUTTONS
+-- BUTTON EVENTS
 --==================================================
 
-ESPButton.MouseButton1Click:Connect(function()
+ESPButton.MouseButton1Click:Connect(
+	function()
 
-	ESP_ENABLED = not ESP_ENABLED
+		ESP_ENABLED =
+			not ESP_ENABLED
 
-	refreshESP()
-	updateButtons()
-end)
-
-TeamButton.MouseButton1Click:Connect(function()
-
-	TEAM_CHECK_ENABLED =
-		not TEAM_CHECK_ENABLED
-
-	refreshESP()
-	updateButtons()
-end)
-
-AimButton.MouseButton1Click:Connect(function()
-
-	AIM_ENABLED = not AIM_ENABLED
-
-	FOV.Visible = AIM_ENABLED
-
-	if not AIM_ENABLED then
-		aimHolding = false
+		refreshESP()
+		updateButtons()
 	end
+)
 
-	updateButtons()
-end)
+TeamButton.MouseButton1Click:Connect(
+	function()
+
+		TEAM_CHECK_ENABLED =
+			not TEAM_CHECK_ENABLED
+
+		refreshESP()
+		updateButtons()
+	end
+)
+
+AimButton.MouseButton1Click:Connect(
+	function()
+
+		AIM_ENABLED =
+			not AIM_ENABLED
+
+		FOV.Visible =
+			AIM_ENABLED
+
+		if not AIM_ENABLED then
+			AIM_HOLDING = false
+		end
+
+		updateButtons()
+	end
+)
 
 --==================================================
--- PLAYERS
+-- PLAYER EVENTS
 --==================================================
 
 local function setupPlayer(player)
@@ -575,26 +602,32 @@ local function setupPlayer(player)
 		return
 	end
 
-	player.CharacterAdded:Connect(function()
+	player.CharacterAdded:Connect(
+		function()
 
-		task.wait(0.5)
+			task.wait(0.5)
 
-		createESP(player)
-	end)
+			createESP(player)
+		end
+	)
 
-	player.CharacterRemoving:Connect(function()
+	player.CharacterRemoving:Connect(
+		function()
 
-		removeESP(player)
-	end)
+			removeESP(player)
+		end
+	)
 
 	player:GetPropertyChangedSignal(
 		"Team"
-	):Connect(function()
+	):Connect(
+		function()
 
-		if TEAM_CHECK_ENABLED then
-			refreshESP()
+			if TEAM_CHECK_ENABLED then
+				createESP(player)
+			end
 		end
-	end)
+	)
 end
 
 for _, player in ipairs(
@@ -604,72 +637,80 @@ for _, player in ipairs(
 	setupPlayer(player)
 end
 
-Players.PlayerAdded:Connect(setupPlayer)
+Players.PlayerAdded:Connect(
+	setupPlayer
+)
 
-Players.PlayerRemoving:Connect(function(player)
+Players.PlayerRemoving:Connect(
+	function(player)
 
-	removeESP(player)
-end)
+		removeESP(player)
+	end
+)
 
 --==================================================
--- TEAM CHANGES
+-- LOCAL TEAM CHANGE
 --==================================================
 
 LocalPlayer:GetPropertyChangedSignal(
 	"Team"
-):Connect(function()
+):Connect(
+	function()
 
-	if TEAM_CHECK_ENABLED then
-		refreshESP()
+		if TEAM_CHECK_ENABLED then
+			refreshESP()
+		end
 	end
-end)
+)
 
 --==================================================
 -- MAIN LOOP
 --==================================================
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(
+	function()
 
-	local viewport = Camera.ViewportSize
+		local viewport =
+			Camera.ViewportSize
 
-	FOV.Position =
-		UDim2.fromOffset(
-			viewport.X / 2,
-			viewport.Y / 2
-		)
+		FOV.Position =
+			UDim2.fromOffset(
+				viewport.X / 2,
+				viewport.Y / 2
+			)
 
-	if not AIM_ENABLED then
-		return
+		if not AIM_ENABLED
+			or not AIM_HOLDING then
+
+			return
+		end
+
+		local target =
+			getClosestTarget()
+
+		if not target then
+			return
+		end
+
+		local origin =
+			Camera.CFrame.Position
+
+		local direction =
+			(target.Position - origin).Unit
+
+		local targetCFrame =
+			CFrame.lookAt(
+				origin,
+				origin + direction
+			)
+
+		Camera.CFrame =
+			Camera.CFrame:Lerp(
+				targetCFrame,
+				AIM_SPEED
+			)
 	end
-
-	if not aimHolding then
-		return
-	end
-
-	local target = getClosestTarget()
-
-	if not target then
-		return
-	end
-
-	local cameraPosition =
-		Camera.CFrame.Position
-
-	local direction =
-		(target.Position - cameraPosition).Unit
-
-	local targetCFrame =
-		CFrame.lookAt(
-			cameraPosition,
-			cameraPosition + direction
-		)
-
-	Camera.CFrame =
-		Camera.CFrame:Lerp(
-			targetCFrame,
-			AIM_SPEED
-		)
-end)
+)
 
 --==================================================
 -- START
