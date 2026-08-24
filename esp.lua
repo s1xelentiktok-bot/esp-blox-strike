@@ -1,47 +1,67 @@
--- esp.lua
--- LocalScript -> StarterPlayerScripts
+--==================================================
+-- ESP + TEAM CHECK + FOV LOCK-ON
+-- LocalScript
+-- StarterPlayer > StarterPlayerScripts
+--==================================================
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+--==================================================
+-- SETTINGS
+--==================================================
 
 local ESP_ENABLED = false
-local SKELETON_ENABLED = false
 local TEAM_CHECK_ENABLED = false
-local GUI_VISIBLE = true
+local AIM_ENABLED = false
+
+local AIM_KEY = Enum.KeyCode.LeftAlt
+
+local FOV_RADIUS = 300
+local AIM_SMOOTHNESS = 0.18
 
 local ESP_COLOR = Color3.fromRGB(255, 60, 60)
-local SKELETON_COLOR = Color3.fromRGB(255, 255, 255)
 
-local Container = Instance.new("Folder")
-Container.Name = "ESP_CONTAINER"
-Container.Parent = workspace
+--==================================================
+-- CONTAINER
+--==================================================
 
-local Objects = {}
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "ESP_Objects"
+ESPFolder.Parent = workspace
+
+local ESPObjects = {}
 
 --==================================================
 -- GUI
 --==================================================
 
 local Gui = Instance.new("ScreenGui")
-Gui.Name = "ESP_GUI"
+Gui.Name = "ESP_Menu"
 Gui.ResetOnSpawn = false
 Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.fromOffset(270, 220)
-Frame.Position = UDim2.fromOffset(20, 20)
-Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
-Frame.BorderSizePixel = 0
-Frame.Parent = Gui
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromOffset(280, 245)
+Main.Position = UDim2.fromOffset(20, 20)
+Main.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+Main.BorderSizePixel = 0
+Main.Parent = Gui
 
 local Corner = Instance.new("UICorner")
 Corner.CornerRadius = UDim.new(0, 10)
-Corner.Parent = Frame
+Corner.Parent = Main
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(65, 65, 75)
+Stroke.Parent = Main
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -20, 0, 35)
+Title.Size = UDim2.new(1, -20, 0, 38)
 Title.Position = UDim2.fromOffset(10, 5)
 Title.BackgroundTransparency = 1
 Title.Text = "ESP"
@@ -49,43 +69,54 @@ Title.TextColor3 = Color3.new(1, 1, 1)
 Title.TextSize = 23
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Frame
+Title.Parent = Main
 
-local function makeButton(name, y)
-    local button = Instance.new("TextButton")
-    button.Name = name
-    button.Size = UDim2.new(1, -20, 0, 36)
-    button.Position = UDim2.fromOffset(10, y)
-    button.BorderSizePixel = 0
-    button.Font = Enum.Font.GothamBold
-    button.TextSize = 16
-    button.Parent = Frame
+local function createButton(y)
+    local Button = Instance.new("TextButton")
 
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 7)
-    c.Parent = button
+    Button.Size = UDim2.new(1, -20, 0, 38)
+    Button.Position = UDim2.fromOffset(10, y)
 
-    return button
+    Button.BackgroundColor3 = Color3.fromRGB(75, 30, 30)
+    Button.BorderSizePixel = 0
+
+    Button.TextColor3 = Color3.fromRGB(255, 90, 90)
+    Button.TextSize = 16
+    Button.Font = Enum.Font.GothamBold
+
+    Button.Parent = Main
+
+    local C = Instance.new("UICorner")
+    C.CornerRadius = UDim.new(0, 7)
+    C.Parent = Button
+
+    return Button
 end
 
-local ESPButton = makeButton("ESP", 45)
-local SkeletonButton = makeButton("Skeleton", 85)
-local TeamButton = makeButton("Team", 125)
+local ESPButton = createButton(45)
+local TeamButton = createButton(87)
+local AimButton = createButton(129)
 
 local Hint = Instance.new("TextLabel")
 Hint.Size = UDim2.new(1, -20, 0, 25)
-Hint.Position = UDim2.fromOffset(10, 170)
+Hint.Position = UDim2.fromOffset(10, 178)
 Hint.BackgroundTransparency = 1
-Hint.Text = "ALT — скрыть / показать"
+Hint.Text = "ALT — lock-on"
 Hint.TextColor3 = Color3.fromRGB(150, 150, 155)
 Hint.TextSize = 12
 Hint.Font = Enum.Font.Gotham
 Hint.TextXAlignment = Enum.TextXAlignment.Left
-Hint.Parent = Frame
+Hint.Parent = Main
+
+--==================================================
+-- BUTTON STATE
+--==================================================
 
 local function updateButtons()
 
-    ESPButton.Text = ESP_ENABLED and "ESP: ON" or "ESP: OFF"
+    ESPButton.Text =
+        ESP_ENABLED and "ESP: ON" or "ESP: OFF"
+
     ESPButton.BackgroundColor3 =
         ESP_ENABLED
         and Color3.fromRGB(30, 80, 40)
@@ -96,20 +127,6 @@ local function updateButtons()
         and Color3.fromRGB(90, 255, 110)
         or Color3.fromRGB(255, 90, 90)
 
-    SkeletonButton.Text =
-        SKELETON_ENABLED
-        and "SKELETON: ON"
-        or "SKELETON: OFF"
-
-    SkeletonButton.BackgroundColor3 =
-        SKELETON_ENABLED
-        and Color3.fromRGB(30, 80, 40)
-        or Color3.fromRGB(80, 30, 30)
-
-    SkeletonButton.TextColor3 =
-        SKELETON_ENABLED
-        and Color3.fromRGB(90, 255, 110)
-        or Color3.fromRGB(255, 90, 90)
 
     TeamButton.Text =
         TEAM_CHECK_ENABLED
@@ -125,196 +142,246 @@ local function updateButtons()
         TEAM_CHECK_ENABLED
         and Color3.fromRGB(90, 255, 110)
         or Color3.fromRGB(255, 90, 90)
+
+
+    AimButton.Text =
+        AIM_ENABLED
+        and "AIM LOCK: ON"
+        or "AIM LOCK: OFF"
+
+    AimButton.BackgroundColor3 =
+        AIM_ENABLED
+        and Color3.fromRGB(30, 80, 40)
+        or Color3.fromRGB(80, 30, 30)
+
+    AimButton.TextColor3 =
+        AIM_ENABLED
+        and Color3.fromRGB(90, 255, 110)
+        or Color3.fromRGB(255, 90, 90)
 end
 
 --==================================================
 -- TEAM CHECK
 --==================================================
 
-local function isEnemy(player)
+local function isEnemy(Player)
+
+    if Player == LocalPlayer then
+        return false
+    end
 
     if not TEAM_CHECK_ENABLED then
         return true
     end
 
-    if not LocalPlayer.Team or not player.Team then
+    if not LocalPlayer.Team or not Player.Team then
         return true
     end
 
-    return player.Team ~= LocalPlayer.Team
+    return Player.Team ~= LocalPlayer.Team
 end
 
 --==================================================
--- CLEANUP
+-- ESP REMOVE
 --==================================================
 
-local function removePlayer(player)
+local function removeESP(Player)
 
-    local data = Objects[player]
+    local Object = ESPObjects[Player]
 
-    if not data then
+    if not Object then
         return
     end
 
-    if data.highlight then
-        data.highlight:Destroy()
+    if Object.Highlight then
+        Object.Highlight:Destroy()
     end
 
-    if data.skeleton then
-        data.skeleton:Destroy()
-    end
-
-    Objects[player] = nil
+    ESPObjects[Player] = nil
 end
 
 --==================================================
--- SKELETON
+-- ESP CREATE
 --==================================================
 
-local function createSkeleton(character)
+local function createESP(Player)
 
-    local folder = Instance.new("Folder")
-    folder.Name = "Skeleton"
-    folder.Parent = Container
+    removeESP(Player)
 
-    local attachments = {}
-
-    local function getAttachment(part)
-
-        if attachments[part] then
-            return attachments[part]
-        end
-
-        local attachment = Instance.new("Attachment")
-        attachment.Parent = part
-
-        attachments[part] = attachment
-
-        return attachment
+    if not ESP_ENABLED then
+        return
     end
 
-    local function connectParts(part0, part1)
-
-        if not part0 or not part1 then
-            return
-        end
-
-        local a0 = getAttachment(part0)
-        local a1 = getAttachment(part1)
-
-        local beam = Instance.new("Beam")
-
-        beam.Attachment0 = a0
-        beam.Attachment1 = a1
-        beam.Width0 = 0.04
-        beam.Width1 = 0.04
-        beam.FaceCamera = true
-        beam.LightEmission = 1
-        beam.Color = ColorSequence.new(SKELETON_COLOR)
-
-        beam.Parent = folder
+    if not isEnemy(Player) then
+        return
     end
 
-    -- R15/R6 и кастомные Motor6D-реги
-    for _, object in ipairs(character:GetDescendants()) do
+    local Character = Player.Character
 
-        if object:IsA("Motor6D") then
-
-            if object.Part0 and object.Part1 then
-                connectParts(object.Part0, object.Part1)
-            end
-        end
+    if not Character then
+        return
     end
 
-    -- Кастомные Bone
-    for _, object in ipairs(character:GetDescendants()) do
+    local Highlight = Instance.new("Highlight")
 
-        if object:IsA("Bone") then
+    Highlight.Name = "ESP"
+    Highlight.Adornee = Character
 
-            local parent = object.Parent
+    Highlight.DepthMode =
+        Enum.HighlightDepthMode.AlwaysOnTop
 
-            if parent and parent:IsA("BasePart") then
+    Highlight.FillColor = ESP_COLOR
+    Highlight.FillTransparency = 0.78
 
-                local parentBone =
-                    object.Parent:FindFirstChildWhichIsA("Bone")
+    Highlight.OutlineColor =
+        Color3.fromRGB(255, 255, 255)
 
-                if parentBone then
-                    connectParts(parent, parentBone)
+    Highlight.OutlineTransparency = 0
+
+    Highlight.Parent = ESPFolder
+
+    ESPObjects[Player] = {
+        Highlight = Highlight
+    }
+end
+
+local function refreshESP()
+
+    for _, Player in ipairs(Players:GetPlayers()) do
+
+        if Player ~= LocalPlayer then
+            createESP(Player)
+        end
+    end
+end
+
+--==================================================
+-- FOV CIRCLE
+--==================================================
+
+local FOV = Instance.new("Frame")
+FOV.Name = "AimbotFOV"
+
+FOV.Size = UDim2.fromOffset(
+    FOV_RADIUS * 2,
+    FOV_RADIUS * 2
+)
+
+FOV.AnchorPoint = Vector2.new(0.5, 0.5)
+
+FOV.BackgroundTransparency = 1
+
+FOV.Visible = false
+
+FOV.Parent = Gui
+
+local FOVCorner = Instance.new("UICorner")
+FOVCorner.CornerRadius = UDim.new(1, 0)
+FOVCorner.Parent = FOV
+
+local FOVStroke = Instance.new("UIStroke")
+FOVStroke.Thickness = 2
+FOVStroke.Color = Color3.fromRGB(255, 255, 255)
+FOVStroke.Transparency = 0.2
+FOVStroke.Parent = FOV
+
+--==================================================
+-- AIM STATE
+--==================================================
+
+local HoldingAim = false
+local CurrentTarget = nil
+
+local function updateFOV()
+
+    local Viewport = Camera.ViewportSize
+
+    FOV.Position = UDim2.fromOffset(
+        Viewport.X / 2,
+        Viewport.Y / 2
+    )
+end
+
+local function getTarget()
+
+    local Center = Vector2.new(
+        Camera.ViewportSize.X / 2,
+        Camera.ViewportSize.Y / 2
+    )
+
+    local ClosestPlayer = nil
+    local ClosestDistance = FOV_RADIUS
+
+    for _, Player in ipairs(Players:GetPlayers()) do
+
+        if Player ~= LocalPlayer
+            and isEnemy(Player) then
+
+            local Character = Player.Character
+
+            if Character then
+
+                local Humanoid =
+                    Character:FindFirstChildOfClass("Humanoid")
+
+                local Head =
+                    Character:FindFirstChild("Head")
+
+                if Humanoid
+                    and Humanoid.Health > 0
+                    and Head then
+
+                    local Position, Visible =
+                        Camera:WorldToViewportPoint(
+                            Head.Position
+                        )
+
+                    if Visible then
+
+                        local ScreenPosition =
+                            Vector2.new(
+                                Position.X,
+                                Position.Y
+                            )
+
+                        local Distance =
+                            (ScreenPosition - Center).Magnitude
+
+                        if Distance < ClosestDistance then
+                            ClosestDistance = Distance
+                            ClosestPlayer = Player
+                        end
+                    end
                 end
             end
         end
     end
 
-    return folder
+    return ClosestPlayer
 end
 
 --==================================================
--- CREATE ESP
+-- INPUT
 --==================================================
 
-local function createPlayer(player)
+UserInputService.InputBegan:Connect(function(Input, Processed)
 
-    if player == LocalPlayer then
+    if Processed then
         return
     end
 
-    removePlayer(player)
-
-    -- TEAM CHECK ДО СОЗДАНИЯ ОБЪЕКТОВ
-    if not isEnemy(player) then
-        return
+    if Input.KeyCode == AIM_KEY then
+        HoldingAim = true
     end
+end)
 
-    local character = player.Character
+UserInputService.InputEnded:Connect(function(Input)
 
-    if not character then
-        return
+    if Input.KeyCode == AIM_KEY then
+        HoldingAim = false
+        CurrentTarget = nil
     end
-
-    local data = {}
-
-    if ESP_ENABLED then
-
-        local highlight = Instance.new("Highlight")
-
-        highlight.Name = "ESP_Highlight"
-        highlight.Adornee = character
-        highlight.DepthMode =
-            Enum.HighlightDepthMode.AlwaysOnTop
-
-        highlight.FillColor = ESP_COLOR
-        highlight.FillTransparency = 0.78
-
-        highlight.OutlineColor =
-            Color3.fromRGB(255, 255, 255)
-
-        highlight.OutlineTransparency = 0
-
-        highlight.Parent = Container
-
-        data.highlight = highlight
-    end
-
-    if SKELETON_ENABLED then
-        data.skeleton = createSkeleton(character)
-    end
-
-    Objects[player] = data
-end
-
---==================================================
--- REFRESH
---==================================================
-
-local function refresh()
-
-    for _, player in ipairs(Players:GetPlayers()) do
-
-        if player ~= LocalPlayer then
-            createPlayer(player)
-        end
-    end
-end
+end)
 
 --==================================================
 -- BUTTONS
@@ -325,106 +392,207 @@ ESPButton.MouseButton1Click:Connect(function()
     ESP_ENABLED = not ESP_ENABLED
 
     updateButtons()
-    refresh()
-end)
-
-SkeletonButton.MouseButton1Click:Connect(function()
-
-    SKELETON_ENABLED = not SKELETON_ENABLED
-
-    updateButtons()
-    refresh()
+    refreshESP()
 end)
 
 TeamButton.MouseButton1Click:Connect(function()
 
-    TEAM_CHECK_ENABLED = not TEAM_CHECK_ENABLED
+    TEAM_CHECK_ENABLED =
+        not TEAM_CHECK_ENABLED
 
     updateButtons()
 
-    -- Полностью пересоздаём ESP.
-    -- Поэтому союзники сразу исчезают.
-    refresh()
+    -- Пересоздаём ESP полностью.
+    refreshESP()
+
+    -- Если текущая цель стала союзником,
+    -- сразу сбрасываем её.
+    if CurrentTarget
+        and not isEnemy(CurrentTarget) then
+
+        CurrentTarget = nil
+    end
 end)
 
---==================================================
--- ALT
---==================================================
+AimButton.MouseButton1Click:Connect(function()
 
-UserInputService.InputBegan:Connect(function(input, processed)
+    AIM_ENABLED = not AIM_ENABLED
 
-    if processed then
-        return
+    FOV.Visible = AIM_ENABLED
+
+    if not AIM_ENABLED then
+        HoldingAim = false
+        CurrentTarget = nil
     end
 
-    if input.KeyCode == Enum.KeyCode.LeftAlt
-        or input.KeyCode == Enum.KeyCode.RightAlt then
-
-        GUI_VISIBLE = not GUI_VISIBLE
-        Frame.Visible = GUI_VISIBLE
-    end
+    updateButtons()
 end)
 
 --==================================================
 -- PLAYER EVENTS
 --==================================================
 
-local function setupPlayer(player)
+local function setupPlayer(Player)
 
-    if player == LocalPlayer then
+    if Player == LocalPlayer then
         return
     end
 
-    player.CharacterAdded:Connect(function()
+    Player.CharacterAdded:Connect(function()
 
         task.wait(0.5)
 
-        if ESP_ENABLED or SKELETON_ENABLED then
-            createPlayer(player)
+        createESP(Player)
+    end)
+
+    Player.CharacterRemoving:Connect(function()
+
+        removeESP(Player)
+
+        if CurrentTarget == Player then
+            CurrentTarget = nil
         end
     end)
 
-    player.CharacterRemoving:Connect(function()
-        removePlayer(player)
+    Player:GetPropertyChangedSignal("Team"):Connect(function()
+
+        if TEAM_CHECK_ENABLED then
+            createESP(Player)
+
+            if CurrentTarget == Player
+                and not isEnemy(Player) then
+
+                CurrentTarget = nil
+            end
+        end
     end)
 end
 
-for _, player in ipairs(Players:GetPlayers()) do
-    setupPlayer(player)
+for _, Player in ipairs(Players:GetPlayers()) do
+    setupPlayer(Player)
 end
 
 Players.PlayerAdded:Connect(setupPlayer)
 
-Players.PlayerRemoving:Connect(function(player)
-    removePlayer(player)
+Players.PlayerRemoving:Connect(function(Player)
+
+    removeESP(Player)
+
+    if CurrentTarget == Player then
+        CurrentTarget = nil
+    end
 end)
 
 --==================================================
--- TEAM CHANGES
+-- LOCAL TEAM CHANGE
 --==================================================
 
 LocalPlayer:GetPropertyChangedSignal("Team"):Connect(function()
 
     if TEAM_CHECK_ENABLED then
-        refresh()
+        refreshESP()
+    end
+
+    if CurrentTarget
+        and not isEnemy(CurrentTarget) then
+
+        CurrentTarget = nil
     end
 end)
 
-for _, player in ipairs(Players:GetPlayers()) do
+--==================================================
+-- MAIN LOOP
+--==================================================
 
-    if player ~= LocalPlayer then
+RunService.RenderStepped:Connect(function()
 
-        player:GetPropertyChangedSignal("Team"):Connect(function()
+    updateFOV()
 
-            if TEAM_CHECK_ENABLED then
-                createPlayer(player)
-            end
-        end)
+    if not AIM_ENABLED then
+        return
     end
-end
+
+    if not HoldingAim then
+        return
+    end
+
+    if not CurrentTarget
+        or not isEnemy(CurrentTarget) then
+
+        CurrentTarget = getTarget()
+    end
+
+    if not CurrentTarget then
+        return
+    end
+
+    local Character =
+        CurrentTarget.Character
+
+    if not Character then
+        CurrentTarget = nil
+        return
+    end
+
+    local Head =
+        Character:FindFirstChild("Head")
+
+    local Humanoid =
+        Character:FindFirstChildOfClass("Humanoid")
+
+    if not Head
+        or not Humanoid
+        or Humanoid.Health <= 0 then
+
+        CurrentTarget = nil
+        return
+    end
+
+    -- Lock-on внутри твоей игры.
+    local TargetPosition =
+        Camera:WorldToViewportPoint(
+            Head.Position
+        )
+
+    local Center =
+        Vector2.new(
+            Camera.ViewportSize.X / 2,
+            Camera.ViewportSize.Y / 2
+        )
+
+    local Target =
+        Vector2.new(
+            TargetPosition.X,
+            TargetPosition.Y
+        )
+
+    if (Target - Center).Magnitude > FOV_RADIUS then
+        CurrentTarget = nil
+        return
+    end
+
+    local CameraPosition =
+        Camera.CFrame.Position
+
+    local Direction =
+        (Head.Position - CameraPosition).Unit
+
+    local TargetCFrame =
+        CFrame.lookAt(
+            CameraPosition,
+            CameraPosition + Direction
+        )
+
+    Camera.CFrame =
+        Camera.CFrame:Lerp(
+            TargetCFrame,
+            AIM_SMOOTHNESS
+        )
+end)
 
 --==================================================
 -- START
 --==================================================
 
 updateButtons()
+updateFOV()
