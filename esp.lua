@@ -1,15 +1,10 @@
--- ESP SYSTEM
--- LocalScript
--- StarterPlayer > StarterPlayerScripts
+-- esp.lua
+-- LocalScript -> StarterPlayerScripts
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
-
---==================================================
--- SETTINGS
---==================================================
 
 local ESP_ENABLED = false
 local SKELETON_ENABLED = false
@@ -19,77 +14,63 @@ local GUI_VISIBLE = true
 local ESP_COLOR = Color3.fromRGB(255, 60, 60)
 local SKELETON_COLOR = Color3.fromRGB(255, 255, 255)
 
-local ESP_TRANSPARENCY = 0.78
+local Container = Instance.new("Folder")
+Container.Name = "ESP_CONTAINER"
+Container.Parent = workspace
 
-local ESP_CONTAINER = Instance.new("Folder")
-ESP_CONTAINER.Name = "LocalESP"
-ESP_CONTAINER.Parent = workspace
-
-local PlayerObjects = {}
+local Objects = {}
 
 --==================================================
 -- GUI
 --==================================================
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ESP_Menu"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "ESP_GUI"
+Gui.ResetOnSpawn = false
+Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Size = UDim2.fromOffset(270, 220)
-Main.Position = UDim2.fromOffset(20, 20)
-Main.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
-Main.BorderSizePixel = 0
-Main.Parent = ScreenGui
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.fromOffset(270, 220)
+Frame.Position = UDim2.fromOffset(20, 20)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+Frame.BorderSizePixel = 0
+Frame.Parent = Gui
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 10)
-MainCorner.Parent = Main
-
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(65, 65, 75)
-MainStroke.Thickness = 1
-MainStroke.Parent = Main
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 10)
+Corner.Parent = Frame
 
 local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Size = UDim2.new(1, -20, 0, 38)
+Title.Size = UDim2.new(1, -20, 0, 35)
 Title.Position = UDim2.fromOffset(10, 5)
 Title.BackgroundTransparency = 1
 Title.Text = "ESP"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextColor3 = Color3.new(1, 1, 1)
 Title.TextSize = 23
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Main
+Title.Parent = Frame
 
-local function CreateButton(name, y)
-    local Button = Instance.new("TextButton")
+local function makeButton(name, y)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = UDim2.new(1, -20, 0, 36)
+    button.Position = UDim2.fromOffset(10, y)
+    button.BorderSizePixel = 0
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 16
+    button.Parent = Frame
 
-    Button.Name = name
-    Button.Size = UDim2.new(1, -20, 0, 36)
-    Button.Position = UDim2.fromOffset(10, y)
-    Button.BackgroundColor3 = Color3.fromRGB(65, 30, 30)
-    Button.BorderSizePixel = 0
-    Button.AutoButtonColor = true
-    Button.TextColor3 = Color3.fromRGB(255, 90, 90)
-    Button.TextSize = 16
-    Button.Font = Enum.Font.GothamBold
-    Button.Parent = Main
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 7)
+    c.Parent = button
 
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, 7)
-    Corner.Parent = Button
-
-    return Button
+    return button
 end
 
-local ESPButton = CreateButton("ESP", 45)
-local SkeletonButton = CreateButton("Skeleton", 85)
-local TeamButton = CreateButton("TeamCheck", 125)
+local ESPButton = makeButton("ESP", 45)
+local SkeletonButton = makeButton("Skeleton", 85)
+local TeamButton = makeButton("Team", 125)
 
 local Hint = Instance.new("TextLabel")
 Hint.Size = UDim2.new(1, -20, 0, 25)
@@ -100,360 +81,350 @@ Hint.TextColor3 = Color3.fromRGB(150, 150, 155)
 Hint.TextSize = 12
 Hint.Font = Enum.Font.Gotham
 Hint.TextXAlignment = Enum.TextXAlignment.Left
-Hint.Parent = Main
+Hint.Parent = Frame
 
---==================================================
--- BUTTON STATE
---==================================================
+local function updateButtons()
 
-local function UpdateButtons()
+    ESPButton.Text = ESP_ENABLED and "ESP: ON" or "ESP: OFF"
+    ESPButton.BackgroundColor3 =
+        ESP_ENABLED
+        and Color3.fromRGB(30, 80, 40)
+        or Color3.fromRGB(80, 30, 30)
 
-    if ESP_ENABLED then
-        ESPButton.Text = "ESP: ON"
-        ESPButton.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
-        ESPButton.TextColor3 = Color3.fromRGB(90, 255, 110)
-    else
-        ESPButton.Text = "ESP: OFF"
-        ESPButton.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
-        ESPButton.TextColor3 = Color3.fromRGB(255, 90, 90)
-    end
+    ESPButton.TextColor3 =
+        ESP_ENABLED
+        and Color3.fromRGB(90, 255, 110)
+        or Color3.fromRGB(255, 90, 90)
 
-    if SKELETON_ENABLED then
-        SkeletonButton.Text = "SKELETON: ON"
-        SkeletonButton.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
-        SkeletonButton.TextColor3 = Color3.fromRGB(90, 255, 110)
-    else
-        SkeletonButton.Text = "SKELETON: OFF"
-        SkeletonButton.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
-        SkeletonButton.TextColor3 = Color3.fromRGB(255, 90, 90)
-    end
+    SkeletonButton.Text =
+        SKELETON_ENABLED
+        and "SKELETON: ON"
+        or "SKELETON: OFF"
 
-    if TEAM_CHECK_ENABLED then
-        TeamButton.Text = "TEAM CHECK: ON"
-        TeamButton.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
-        TeamButton.TextColor3 = Color3.fromRGB(90, 255, 110)
-    else
-        TeamButton.Text = "TEAM CHECK: OFF"
-        TeamButton.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
-        TeamButton.TextColor3 = Color3.fromRGB(255, 90, 90)
-    end
+    SkeletonButton.BackgroundColor3 =
+        SKELETON_ENABLED
+        and Color3.fromRGB(30, 80, 40)
+        or Color3.fromRGB(80, 30, 30)
+
+    SkeletonButton.TextColor3 =
+        SKELETON_ENABLED
+        and Color3.fromRGB(90, 255, 110)
+        or Color3.fromRGB(255, 90, 90)
+
+    TeamButton.Text =
+        TEAM_CHECK_ENABLED
+        and "TEAM CHECK: ON"
+        or "TEAM CHECK: OFF"
+
+    TeamButton.BackgroundColor3 =
+        TEAM_CHECK_ENABLED
+        and Color3.fromRGB(30, 80, 40)
+        or Color3.fromRGB(80, 30, 30)
+
+    TeamButton.TextColor3 =
+        TEAM_CHECK_ENABLED
+        and Color3.fromRGB(90, 255, 110)
+        or Color3.fromRGB(255, 90, 90)
 end
 
 --==================================================
 -- TEAM CHECK
 --==================================================
 
-local function IsEnemy(Player)
+local function isEnemy(player)
 
     if not TEAM_CHECK_ENABLED then
         return true
     end
 
-    if not LocalPlayer.Team or not Player.Team then
+    if not LocalPlayer.Team or not player.Team then
         return true
     end
 
-    return Player.Team ~= LocalPlayer.Team
+    return player.Team ~= LocalPlayer.Team
 end
 
 --==================================================
 -- CLEANUP
 --==================================================
 
-local function RemovePlayerESP(Player)
+local function removePlayer(player)
 
-    local Data = PlayerObjects[Player]
+    local data = Objects[player]
 
-    if not Data then
+    if not data then
         return
     end
 
-    if Data.Highlight then
-        Data.Highlight:Destroy()
+    if data.highlight then
+        data.highlight:Destroy()
     end
 
-    if Data.Skeleton then
-        Data.Skeleton:Destroy()
+    if data.skeleton then
+        data.skeleton:Destroy()
     end
 
-    PlayerObjects[Player] = nil
+    Objects[player] = nil
 end
 
 --==================================================
 -- SKELETON
 --==================================================
 
-local function CreateSkeleton(Character)
+local function createSkeleton(character)
 
-    local Folder = Instance.new("Folder")
-    Folder.Name = "Skeleton"
-    Folder.Parent = ESP_CONTAINER
+    local folder = Instance.new("Folder")
+    folder.Name = "Skeleton"
+    folder.Parent = Container
 
-    local CreatedAttachments = {}
+    local attachments = {}
 
-    local function GetAttachment(Part)
+    local function getAttachment(part)
 
-        if not Part then
-            return nil
+        if attachments[part] then
+            return attachments[part]
         end
 
-        if CreatedAttachments[Part] then
-            return CreatedAttachments[Part]
-        end
+        local attachment = Instance.new("Attachment")
+        attachment.Parent = part
 
-        local Attachment = Instance.new("Attachment")
-        Attachment.Name = "ESP_Attachment"
-        Attachment.Parent = Part
+        attachments[part] = attachment
 
-        CreatedAttachments[Part] = Attachment
-
-        return Attachment
+        return attachment
     end
 
-    for _, Object in ipairs(Character:GetDescendants()) do
+    local function connectParts(part0, part1)
 
-        if Object:IsA("Motor6D") then
+        if not part0 or not part1 then
+            return
+        end
 
-            local Part0 = Object.Part0
-            local Part1 = Object.Part1
+        local a0 = getAttachment(part0)
+        local a1 = getAttachment(part1)
 
-            if Part0 and Part1 then
+        local beam = Instance.new("Beam")
 
-                local Attachment0 = GetAttachment(Part0)
-                local Attachment1 = GetAttachment(Part1)
+        beam.Attachment0 = a0
+        beam.Attachment1 = a1
+        beam.Width0 = 0.04
+        beam.Width1 = 0.04
+        beam.FaceCamera = true
+        beam.LightEmission = 1
+        beam.Color = ColorSequence.new(SKELETON_COLOR)
 
-                if Attachment0 and Attachment1 then
+        beam.Parent = folder
+    end
 
-                    local Beam = Instance.new("Beam")
+    -- R15/R6 и кастомные Motor6D-реги
+    for _, object in ipairs(character:GetDescendants()) do
 
-                    Beam.Name = "Bone"
-                    Beam.Attachment0 = Attachment0
-                    Beam.Attachment1 = Attachment1
+        if object:IsA("Motor6D") then
 
-                    Beam.Width0 = 0.045
-                    Beam.Width1 = 0.045
+            if object.Part0 and object.Part1 then
+                connectParts(object.Part0, object.Part1)
+            end
+        end
+    end
 
-                    Beam.FaceCamera = true
-                    Beam.LightEmission = 1
+    -- Кастомные Bone
+    for _, object in ipairs(character:GetDescendants()) do
 
-                    Beam.Color = ColorSequence.new(
-                        SKELETON_COLOR
-                    )
+        if object:IsA("Bone") then
 
-                    Beam.Parent = Folder
+            local parent = object.Parent
+
+            if parent and parent:IsA("BasePart") then
+
+                local parentBone =
+                    object.Parent:FindFirstChildWhichIsA("Bone")
+
+                if parentBone then
+                    connectParts(parent, parentBone)
                 end
             end
         end
     end
 
-    return Folder
+    return folder
 end
 
 --==================================================
 -- CREATE ESP
 --==================================================
 
-local function CreatePlayerESP(Player)
+local function createPlayer(player)
 
-    if Player == LocalPlayer then
+    if player == LocalPlayer then
         return
     end
 
-    RemovePlayerESP(Player)
+    removePlayer(player)
 
-    if not ESP_ENABLED and not SKELETON_ENABLED then
+    -- TEAM CHECK ДО СОЗДАНИЯ ОБЪЕКТОВ
+    if not isEnemy(player) then
         return
     end
 
-    -- TEAM CHECK ПРОВЕРЯЕТСЯ ДО СОЗДАНИЯ ESP
-    if not IsEnemy(Player) then
+    local character = player.Character
+
+    if not character then
         return
     end
 
-    local Character = Player.Character
-
-    if not Character then
-        return
-    end
-
-    if not Character:IsA("Model") then
-        return
-    end
-
-    local Data = {}
-
-    --==================================================
-    -- HIGHLIGHT
-    --==================================================
+    local data = {}
 
     if ESP_ENABLED then
 
-        local Highlight = Instance.new("Highlight")
+        local highlight = Instance.new("Highlight")
 
-        Highlight.Name = "PlayerESP"
-        Highlight.Adornee = Character
-
-        Highlight.DepthMode =
+        highlight.Name = "ESP_Highlight"
+        highlight.Adornee = character
+        highlight.DepthMode =
             Enum.HighlightDepthMode.AlwaysOnTop
 
-        Highlight.FillColor = ESP_COLOR
-        Highlight.FillTransparency = ESP_TRANSPARENCY
+        highlight.FillColor = ESP_COLOR
+        highlight.FillTransparency = 0.78
 
-        Highlight.OutlineColor =
+        highlight.OutlineColor =
             Color3.fromRGB(255, 255, 255)
 
-        Highlight.OutlineTransparency = 0
+        highlight.OutlineTransparency = 0
 
-        Highlight.Parent = ESP_CONTAINER
+        highlight.Parent = Container
 
-        Data.Highlight = Highlight
+        data.highlight = highlight
     end
-
-    --==================================================
-    -- SKELETON
-    --==================================================
 
     if SKELETON_ENABLED then
-
-        Data.Skeleton =
-            CreateSkeleton(Character)
+        data.skeleton = createSkeleton(character)
     end
 
-    PlayerObjects[Player] = Data
+    Objects[player] = data
 end
 
 --==================================================
 -- REFRESH
 --==================================================
 
-local function RefreshESP()
+local function refresh()
 
-    for _, Player in ipairs(Players:GetPlayers()) do
+    for _, player in ipairs(Players:GetPlayers()) do
 
-        if Player ~= LocalPlayer then
-            CreatePlayerESP(Player)
+        if player ~= LocalPlayer then
+            createPlayer(player)
         end
     end
 end
 
 --==================================================
--- TOGGLE ESP
+-- BUTTONS
 --==================================================
 
 ESPButton.MouseButton1Click:Connect(function()
 
     ESP_ENABLED = not ESP_ENABLED
 
-    UpdateButtons()
-    RefreshESP()
+    updateButtons()
+    refresh()
 end)
-
---==================================================
--- TOGGLE SKELETON
---==================================================
 
 SkeletonButton.MouseButton1Click:Connect(function()
 
     SKELETON_ENABLED = not SKELETON_ENABLED
 
-    UpdateButtons()
-    RefreshESP()
+    updateButtons()
+    refresh()
 end)
-
---==================================================
--- TOGGLE TEAM CHECK
---==================================================
 
 TeamButton.MouseButton1Click:Connect(function()
 
-    TEAM_CHECK_ENABLED =
-        not TEAM_CHECK_ENABLED
+    TEAM_CHECK_ENABLED = not TEAM_CHECK_ENABLED
 
-    UpdateButtons()
+    updateButtons()
 
-    -- Полностью пересоздаём ESP,
-    -- поэтому своя команда сразу исчезает.
-    RefreshESP()
+    -- Полностью пересоздаём ESP.
+    -- Поэтому союзники сразу исчезают.
+    refresh()
 end)
 
 --==================================================
--- ALT GUI
+-- ALT
 --==================================================
 
-UserInputService.InputBegan:Connect(function(Input, Processed)
+UserInputService.InputBegan:Connect(function(input, processed)
 
-    if Processed then
+    if processed then
         return
     end
 
-    if Input.KeyCode == Enum.KeyCode.LeftAlt
-        or Input.KeyCode == Enum.KeyCode.RightAlt then
+    if input.KeyCode == Enum.KeyCode.LeftAlt
+        or input.KeyCode == Enum.KeyCode.RightAlt then
 
         GUI_VISIBLE = not GUI_VISIBLE
-
-        Main.Visible = GUI_VISIBLE
+        Frame.Visible = GUI_VISIBLE
     end
 end)
 
 --==================================================
--- PLAYER SETUP
+-- PLAYER EVENTS
 --==================================================
 
-local function SetupPlayer(Player)
+local function setupPlayer(player)
 
-    if Player == LocalPlayer then
+    if player == LocalPlayer then
         return
     end
 
-    Player.CharacterAdded:Connect(function(Character)
+    player.CharacterAdded:Connect(function()
 
         task.wait(0.5)
 
         if ESP_ENABLED or SKELETON_ENABLED then
-            CreatePlayerESP(Player)
+            createPlayer(player)
         end
     end)
 
-    Player.CharacterRemoving:Connect(function()
-
-        RemovePlayerESP(Player)
+    player.CharacterRemoving:Connect(function()
+        removePlayer(player)
     end)
-
-    if Player.Character then
-
-        if ESP_ENABLED or SKELETON_ENABLED then
-            CreatePlayerESP(Player)
-        end
-    end
 end
 
-for _, Player in ipairs(Players:GetPlayers()) do
-    SetupPlayer(Player)
+for _, player in ipairs(Players:GetPlayers()) do
+    setupPlayer(player)
 end
 
-Players.PlayerAdded:Connect(function(Player)
+Players.PlayerAdded:Connect(setupPlayer)
 
-    SetupPlayer(Player)
-end)
-
-Players.PlayerRemoving:Connect(function(Player)
-
-    RemovePlayerESP(Player)
+Players.PlayerRemoving:Connect(function(player)
+    removePlayer(player)
 end)
 
 --==================================================
--- TEAM CHANGE
+-- TEAM CHANGES
 --==================================================
 
 LocalPlayer:GetPropertyChangedSignal("Team"):Connect(function()
 
     if TEAM_CHECK_ENABLED then
-        RefreshESP()
+        refresh()
     end
 end)
 
+for _, player in ipairs(Players:GetPlayers()) do
+
+    if player ~= LocalPlayer then
+
+        player:GetPropertyChangedSignal("Team"):Connect(function()
+
+            if TEAM_CHECK_ENABLED then
+                createPlayer(player)
+            end
+        end)
+    end
+end
+
 --==================================================
--- INITIAL STATE
+-- START
 --==================================================
 
-UpdateButtons()
+updateButtons()
