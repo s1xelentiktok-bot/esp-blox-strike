@@ -1,18 +1,21 @@
 --========================================================--
---          ESP + TEAM CHECK + NPC RETICLE LOCK          --
+--       ESP + TEAM CHECK + NPC RETICLE LOCK-ON          --
 --                    LOCAL SCRIPT                       --
 --========================================================--
 --
--- Left Alt  = удерживать lock-on NPC
--- Right Alt = показать / скрыть меню
+-- Place in:
+-- StarterPlayer > StarterPlayerScripts
 --
--- ESP       = игроки
--- Team Check = только противоположная команда
--- Aim Lock  = только NPC / манекены
+-- Required for NPC lock:
+-- workspace
+--   └── NPCs
+--        ├── Dummy
+--        ├── NPC
+--        └── ...
 --
--- ВАЖНО:
--- NPC lock-on НЕ изменяет Camera.CFrame.
--- Он только показывает reticle на NPC.
+-- Left Alt  = hold NPC lock-on
+-- Right Alt = show/hide menu
+--
 --========================================================--
 
 local Players = game:GetService("Players")
@@ -38,6 +41,18 @@ local MENU_KEY = Enum.KeyCode.RightAlt
 local ESP_COLOR = Color3.fromRGB(255, 60, 60)
 
 --========================================================--
+-- NPC FOLDER
+--========================================================--
+
+local NPCFolder = workspace:FindFirstChild("NPCs")
+
+if not NPCFolder then
+	NPCFolder = Instance.new("Folder")
+	NPCFolder.Name = "NPCs"
+	NPCFolder.Parent = workspace
+end
+
+--========================================================--
 -- ESP FOLDER
 --========================================================--
 
@@ -51,34 +66,6 @@ local ESPObjects = {}
 -- TEAM CHECK
 --========================================================--
 
-local function getTeamValue(player)
-
-	if not player then
-		return nil
-	end
-
-	-- Обычная Roblox Team
-	if player.Team ~= nil then
-		return player.Team
-	end
-
-	-- Запасной вариант
-	if player.TeamColor ~= nil then
-		return player.TeamColor
-	end
-
-	-- Некоторые игры хранят команду в Attributes
-	local teamAttribute =
-		player:GetAttribute("Team")
-
-	if teamAttribute ~= nil then
-		return teamAttribute
-	end
-
-	return nil
-end
-
-
 local function isEnemy(player)
 
 	if not player then
@@ -89,26 +76,19 @@ local function isEnemy(player)
 		return false
 	end
 
-	-- Team Check выключен:
-	-- все игроки считаются врагами
 	if not TEAM_CHECK_ENABLED then
 		return true
 	end
 
-	local myTeam =
-		getTeamValue(LocalPlayer)
-
-	local playerTeam =
-		getTeamValue(player)
-
-	-- Если команды неизвестны,
-	-- НЕ скрываем игрока.
-	if myTeam == nil or playerTeam == nil then
+	if LocalPlayer.Team == nil then
 		return true
 	end
 
-	-- Только противоположная команда
-	return myTeam ~= playerTeam
+	if player.Team == nil then
+		return true
+	end
+
+	return player.Team ~= LocalPlayer.Team
 end
 
 --========================================================--
@@ -117,8 +97,7 @@ end
 
 local function removeESP(player)
 
-	local object =
-		ESPObjects[player]
+	local object = ESPObjects[player]
 
 	if not object then
 		return
@@ -147,43 +126,27 @@ local function createESP(player)
 		return
 	end
 
-	local character =
-		player.Character
+	local character = player.Character
 
 	if not character then
 		return
 	end
 
-	local highlight =
-		Instance.new("Highlight")
+	local highlight = Instance.new("Highlight")
 
-	highlight.Name =
-		"PlayerESP"
+	highlight.Name = "PlayerESP"
+	highlight.Adornee = character
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 
-	highlight.Adornee =
-		character
-
-	highlight.DepthMode =
-		Enum.HighlightDepthMode.AlwaysOnTop
-
-	highlight.FillColor =
-		ESP_COLOR
-
-	highlight.FillTransparency =
-		0.78
+	highlight.FillColor = ESP_COLOR
+	highlight.FillTransparency = 0.78
 
 	highlight.OutlineColor =
-		Color3.fromRGB(
-			255,
-			255,
-			255
-		)
+		Color3.fromRGB(255, 255, 255)
 
-	highlight.OutlineTransparency =
-		0
+	highlight.OutlineTransparency = 0
 
-	highlight.Parent =
-		ESPFolder
+	highlight.Parent = ESPFolder
 
 	ESPObjects[player] = {
 		Highlight = highlight
@@ -196,9 +159,7 @@ end
 
 local function refreshESP()
 
-	for _, player in ipairs(
-		Players:GetPlayers()
-	) do
+	for _, player in ipairs(Players:GetPlayers()) do
 
 		if player ~= LocalPlayer then
 			createESP(player)
@@ -210,228 +171,127 @@ end
 -- GUI
 --========================================================--
 
-local Gui =
-	Instance.new("ScreenGui")
+local Gui = Instance.new("ScreenGui")
 
-Gui.Name =
-	"GameESPMenu"
-
-Gui.ResetOnSpawn =
-	false
-
-Gui.IgnoreGuiInset =
-	true
-
-Gui.ZIndexBehavior =
-	Enum.ZIndexBehavior.Sibling
+Gui.Name = "GameESPMenu"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 Gui.Parent =
-	LocalPlayer:WaitForChild(
-		"PlayerGui"
-	)
+	LocalPlayer:WaitForChild("PlayerGui")
 
 --========================================================--
 -- MAIN
 --========================================================--
 
-local Main =
-	Instance.new("Frame")
+local Main = Instance.new("Frame")
 
-Main.Size =
-	UDim2.fromOffset(
-		300,
-		245
-	)
-
-Main.Position =
-	UDim2.fromOffset(
-		20,
-		20
-	)
+Main.Size = UDim2.fromOffset(300, 245)
+Main.Position = UDim2.fromOffset(20, 20)
 
 Main.BackgroundColor3 =
-	Color3.fromRGB(
-		24,
-		24,
-		28
-	)
+	Color3.fromRGB(24, 24, 28)
 
-Main.BorderSizePixel =
-	0
+Main.BorderSizePixel = 0
+Main.Active = true
 
-Main.Active =
-	true
+Main.Parent = Gui
 
-Main.Parent =
-	Gui
-
-local MainCorner =
-	Instance.new("UICorner")
+local MainCorner = Instance.new("UICorner")
 
 MainCorner.CornerRadius =
-	UDim.new(
-		0,
-		10
-	)
+	UDim.new(0, 10)
 
-MainCorner.Parent =
-	Main
+MainCorner.Parent = Main
 
-local MainStroke =
-	Instance.new("UIStroke")
+local MainStroke = Instance.new("UIStroke")
 
 MainStroke.Color =
-	Color3.fromRGB(
-		65,
-		65,
-		75
-	)
+	Color3.fromRGB(65, 65, 75)
 
-MainStroke.Parent =
-	Main
+MainStroke.Parent = Main
 
 --========================================================--
 -- TITLE
 --========================================================--
 
-local Title =
-	Instance.new("TextLabel")
+local Title = Instance.new("TextLabel")
 
 Title.Size =
-	UDim2.new(
-		1,
-		-20,
-		0,
-		40
-	)
+	UDim2.new(1, -20, 0, 40)
 
 Title.Position =
-	UDim2.fromOffset(
-		10,
-		5
-	)
+	UDim2.fromOffset(10, 5)
 
-Title.BackgroundTransparency =
-	1
+Title.BackgroundTransparency = 1
 
-Title.Text =
-	"ESP / NPC AIM"
+Title.Text = "ESP / NPC AIM"
 
 Title.TextColor3 =
-	Color3.new(
-		1,
-		1,
-		1
-	)
+	Color3.new(1, 1, 1)
 
-Title.TextSize =
-	23
-
-Title.Font =
-	Enum.Font.GothamBold
+Title.TextSize = 23
+Title.Font = Enum.Font.GothamBold
 
 Title.TextXAlignment =
 	Enum.TextXAlignment.Left
 
-Title.Parent =
-	Main
+Title.Parent = Main
 
 --========================================================--
 -- BUTTON
 --========================================================--
 
-local function makeButton(
-	name,
-	y
-)
+local function makeButton(name, y)
 
 	local button =
 		Instance.new("TextButton")
 
-	button.Name =
-		name
+	button.Name = name
 
 	button.Size =
-		UDim2.new(
-			1,
-			-20,
-			0,
-			38
-		)
+		UDim2.new(1, -20, 0, 38)
 
 	button.Position =
-		UDim2.fromOffset(
-			10,
-			y
-		)
+		UDim2.fromOffset(10, y)
 
 	button.BackgroundColor3 =
-		Color3.fromRGB(
-			80,
-			30,
-			30
-		)
+		Color3.fromRGB(80, 30, 30)
 
-	button.BorderSizePixel =
-		0
+	button.BorderSizePixel = 0
 
 	button.TextColor3 =
-		Color3.fromRGB(
-			255,
-			90,
-			90
-		)
+		Color3.fromRGB(255, 90, 90)
 
-	button.TextSize =
-		15
+	button.TextSize = 15
+	button.Font = Enum.Font.GothamBold
 
-	button.Font =
-		Enum.Font.GothamBold
+	button.AutoButtonColor = true
+	button.Active = true
+	button.Selectable = true
 
-	button.AutoButtonColor =
-		true
-
-	button.Active =
-		true
-
-	button.Selectable =
-		true
-
-	button.Parent =
-		Main
+	button.Parent = Main
 
 	local corner =
 		Instance.new("UICorner")
 
 	corner.CornerRadius =
-		UDim.new(
-			0,
-			7
-		)
+		UDim.new(0, 7)
 
-	corner.Parent =
-		button
+	corner.Parent = button
 
 	return button
 end
 
 local ESPButton =
-	makeButton(
-		"ESP",
-		48
-	)
+	makeButton("ESP", 48)
 
 local TeamButton =
-	makeButton(
-		"TeamCheck",
-		91
-	)
+	makeButton("TeamCheck", 91)
 
 local AimButton =
-	makeButton(
-		"AimLock",
-		134
-	)
+	makeButton("AimLock", 134)
 
 --========================================================--
 -- INFO
@@ -441,93 +301,52 @@ local Info =
 	Instance.new("TextLabel")
 
 Info.Size =
-	UDim2.new(
-		1,
-		-20,
-		0,
-		40
-	)
+	UDim2.new(1, -20, 0, 40)
 
 Info.Position =
-	UDim2.fromOffset(
-		10,
-		180
-	)
+	UDim2.fromOffset(10, 180)
 
-Info.BackgroundTransparency =
-	1
+Info.BackgroundTransparency = 1
 
 Info.Text =
 	"Left Alt - NPC LOCK\nRight Alt - MENU"
 
 Info.TextColor3 =
-	Color3.fromRGB(
-		150,
-		150,
-		155
-	)
+	Color3.fromRGB(150, 150, 155)
 
-Info.TextSize =
-	11
-
-Info.Font =
-	Enum.Font.Gotham
+Info.TextSize = 11
+Info.Font = Enum.Font.Gotham
 
 Info.TextXAlignment =
 	Enum.TextXAlignment.Left
 
-Info.Parent =
-	Main
+Info.Parent = Main
 
 --========================================================--
 -- BUTTON STATE
 --========================================================--
 
-local function setButton(
-	button,
-	text,
-	enabled
-)
+local function setButton(button, text, enabled)
 
 	button.Text =
 		text ..
-		(
-			enabled
-			and ": ON"
-			or ": OFF"
-		)
+		(enabled and ": ON" or ": OFF")
 
 	if enabled then
 
 		button.BackgroundColor3 =
-			Color3.fromRGB(
-				30,
-				80,
-				40
-			)
+			Color3.fromRGB(30, 80, 40)
 
 		button.TextColor3 =
-			Color3.fromRGB(
-				90,
-				255,
-				110
-			)
+			Color3.fromRGB(90, 255, 110)
 
 	else
 
 		button.BackgroundColor3 =
-			Color3.fromRGB(
-				80,
-				30,
-				30
-			)
+			Color3.fromRGB(80, 30, 30)
 
 		button.TextColor3 =
-			Color3.fromRGB(
-				255,
-				90,
-				90
-			)
+			Color3.fromRGB(255, 90, 90)
 	end
 end
 
@@ -559,8 +378,7 @@ end
 local FOV =
 	Instance.new("Frame")
 
-FOV.Name =
-	"NPC_FOV"
+FOV.Name = "NPC_FOV"
 
 FOV.Size =
 	UDim2.fromOffset(
@@ -569,56 +387,35 @@ FOV.Size =
 	)
 
 FOV.AnchorPoint =
-	Vector2.new(
-		0.5,
-		0.5
-	)
+	Vector2.new(0.5, 0.5)
 
-FOV.BackgroundTransparency =
-	1
+FOV.BackgroundTransparency = 1
+FOV.Visible = false
 
-FOV.Visible =
-	false
-
-FOV.ZIndex =
-	2
-
-FOV.Parent =
-	Gui
+FOV.ZIndex = 2
+FOV.Parent = Gui
 
 local FOVCorner =
 	Instance.new("UICorner")
 
 FOVCorner.CornerRadius =
-	UDim.new(
-		1,
-		0
-	)
+	UDim.new(1, 0)
 
-FOVCorner.Parent =
-	FOV
+FOVCorner.Parent = FOV
 
 local FOVStroke =
 	Instance.new("UIStroke")
 
-FOVStroke.Thickness =
-	2
-
-FOVStroke.Transparency =
-	0.2
+FOVStroke.Thickness = 2
+FOVStroke.Transparency = 0.2
 
 FOVStroke.Color =
-	Color3.fromRGB(
-		255,
-		255,
-		255
-	)
+	Color3.fromRGB(255, 255, 255)
 
-FOVStroke.Parent =
-	FOV
+FOVStroke.Parent = FOV
 
 --========================================================--
--- NPC RETICLE
+-- RETICLE
 --========================================================--
 
 local Reticle =
@@ -628,102 +425,58 @@ Reticle.Name =
 	"NPCReticle"
 
 Reticle.Size =
-	UDim2.fromOffset(
-		10,
-		10
-	)
+	UDim2.fromOffset(12, 12)
 
 Reticle.AnchorPoint =
-	Vector2.new(
-		0.5,
-		0.5
-	)
+	Vector2.new(0.5, 0.5)
 
-Reticle.BackgroundColor3 =
-	Color3.fromRGB(
-		255,
-		255,
-		255
-	)
+Reticle.BackgroundTransparency = 1
+Reticle.Visible = false
 
-Reticle.BorderSizePixel =
-	0
-
-Reticle.Visible =
-	false
-
-Reticle.ZIndex =
-	100
-
-Reticle.Parent =
-	Gui
+Reticle.ZIndex = 100
+Reticle.Parent = Gui
 
 local ReticleCorner =
 	Instance.new("UICorner")
 
 ReticleCorner.CornerRadius =
-	UDim.new(
-		1,
-		0
-	)
+	UDim.new(1, 0)
 
-ReticleCorner.Parent =
-	Reticle
+ReticleCorner.Parent = Reticle
 
 local ReticleStroke =
 	Instance.new("UIStroke")
 
-ReticleStroke.Thickness =
-	2
+ReticleStroke.Thickness = 2
 
 ReticleStroke.Color =
-	Color3.fromRGB(
-		255,
-		60,
-		60
-	)
+	Color3.fromRGB(255, 70, 70)
 
-ReticleStroke.Parent =
-	Reticle
+ReticleStroke.Parent = Reticle
 
 --========================================================--
 -- NPC PART
 --========================================================--
 
-local NPCPartNames = {
+local function getNPCPart(model)
 
-	"HumanoidRootPart",
-
-	"UpperTorso",
-
-	"Torso",
-
-	"Chest",
-
-	"Body",
-
-	"Root",
-
-	"Pelvis",
-
-	"Spine"
-
-}
-
-local function getNPCPart(
-	character
-)
-
-	if not character then
+	if not model then
 		return nil
 	end
 
-	for _, name in ipairs(
-		NPCPartNames
-	) do
+	local preferred = {
+		"HumanoidRootPart",
+		"UpperTorso",
+		"Torso",
+		"Chest",
+		"Body",
+		"Root"
+	}
+
+	for _, name in ipairs(preferred) do
 
 		local part =
-			character:FindFirstChild(
+			model:FindFirstChild(
 				name,
 				true
 			)
@@ -736,51 +489,24 @@ local function getNPCPart(
 		end
 	end
 
-	-- Запасной вариант:
-	-- берём любую видимую часть тела.
-	for _, object in ipairs(
-		character:GetDescendants()
-	) do
-
-		if object:IsA("BasePart")
-			and object.Name ~= "Handle"
-			and object.Transparency < 1 then
-
-			return object
-		end
-	end
-
-	return nil
+	return model:FindFirstChildWhichIsA(
+		"BasePart",
+		true
+	)
 end
 
 --========================================================--
--- NPC CHECK
+-- NPC VALIDATION
 --========================================================--
 
-local function isNPC(
-	object
-)
+local function validNPC(model)
 
-	if not object:IsA("Model") then
-		return false
-	end
-
-	if object ==
-		LocalPlayer.Character then
-
-		return false
-	end
-
-	-- Игроки не считаются NPC
-	if Players:GetPlayerFromCharacter(
-		object
-	) then
-
+	if not model:IsA("Model") then
 		return false
 	end
 
 	local humanoid =
-		object:FindFirstChildOfClass(
+		model:FindFirstChildOfClass(
 			"Humanoid"
 		)
 
@@ -792,11 +518,53 @@ local function isNPC(
 		return false
 	end
 
-	return true
+	return getNPCPart(model) ~= nil
 end
 
 --========================================================--
--- FIND NPC
+-- NPC CACHE
+--========================================================--
+
+local NPCs = {}
+
+local function addNPC(object)
+
+	if validNPC(object) then
+		NPCs[object] = true
+	end
+end
+
+local function removeNPC(object)
+
+	NPCs[object] = nil
+end
+
+for _, object in ipairs(
+	NPCFolder:GetChildren()
+) do
+
+	addNPC(object)
+end
+
+NPCFolder.ChildAdded:Connect(
+	function(object)
+
+		task.defer(
+			addNPC,
+			object
+		)
+	end
+)
+
+NPCFolder.ChildRemoved:Connect(
+	function(object)
+
+		removeNPC(object)
+	end
+)
+
+--========================================================--
+-- TARGET SEARCH
 --========================================================--
 
 local function getClosestNPC()
@@ -814,20 +582,16 @@ local function getClosestNPC()
 			camera.ViewportSize.Y / 2
 		)
 
-	local closest =
-		nil
+	local closestPart = nil
+	local closestDistance = FOV_RADIUS
 
-	local closestDistance =
-		FOV_RADIUS
+	for npc in pairs(NPCs) do
 
-	for _, object in ipairs(
-		workspace:GetDescendants()
-	) do
-
-		if isNPC(object) then
+		if npc.Parent
+			and validNPC(npc) then
 
 			local part =
-				getNPCPart(object)
+				getNPCPart(npc)
 
 			if part then
 
@@ -846,8 +610,7 @@ local function getClosestNPC()
 
 					local distance =
 						(
-							screen -
-							center
+							screen - center
 						).Magnitude
 
 					if distance <
@@ -856,7 +619,7 @@ local function getClosestNPC()
 						closestDistance =
 							distance
 
-						closest =
+						closestPart =
 							part
 					end
 				end
@@ -864,30 +627,26 @@ local function getClosestNPC()
 		end
 	end
 
-	return closest
+	return closestPart
 end
 
 --========================================================--
--- CURRENT NPC
+-- CURRENT TARGET
 --========================================================--
 
-local CurrentNPC =
-	nil
+local CurrentTarget = nil
 
 --========================================================--
--- UPDATE NPC RETICLE
+-- UPDATE RETICLE
 --========================================================--
 
-local function updateNPCReticle()
+local function updateReticle()
 
 	if not AIM_ENABLED
 		or not AIM_HOLDING then
 
-		Reticle.Visible =
-			false
-
-		CurrentNPC =
-			nil
+		Reticle.Visible = false
+		CurrentTarget = nil
 
 		return
 	end
@@ -899,33 +658,29 @@ local function updateNPCReticle()
 		return
 	end
 
-	if not CurrentNPC
-		or not CurrentNPC.Parent then
+	if not CurrentTarget
+		or not CurrentTarget.Parent then
 
-		CurrentNPC =
+		CurrentTarget =
 			getClosestNPC()
 	end
 
-	if not CurrentNPC then
+	if not CurrentTarget then
 
-		Reticle.Visible =
-			false
+		Reticle.Visible = false
 
 		return
 	end
 
 	local position =
 		camera:WorldToViewportPoint(
-			CurrentNPC.Position
+			CurrentTarget.Position
 		)
 
 	if position.Z <= 0 then
 
-		CurrentNPC =
-			nil
-
-		Reticle.Visible =
-			false
+		CurrentTarget = nil
+		Reticle.Visible = false
 
 		return
 	end
@@ -936,8 +691,7 @@ local function updateNPCReticle()
 			position.Y
 		)
 
-	Reticle.Visible =
-		true
+	Reticle.Visible = true
 end
 
 --========================================================--
@@ -961,11 +715,7 @@ TeamButton.MouseButton1Click:Connect(
 		TEAM_CHECK_ENABLED =
 			not TEAM_CHECK_ENABLED
 
-		-- Полностью обновляем ESP.
-		-- Союзники удаляются,
-		-- противоположная команда остаётся.
 		refreshESP()
-
 		updateButtons()
 	end
 )
@@ -981,14 +731,9 @@ AimButton.MouseButton1Click:Connect(
 
 		if not AIM_ENABLED then
 
-			AIM_HOLDING =
-				false
-
-			CurrentNPC =
-				nil
-
-			Reticle.Visible =
-				false
+			AIM_HOLDING = false
+			CurrentTarget = nil
+			Reticle.Visible = false
 		end
 
 		updateButtons()
@@ -1000,52 +745,37 @@ AimButton.MouseButton1Click:Connect(
 --========================================================--
 
 UserInputService.InputBegan:Connect(
-	function(
-		input,
-		processed
-	)
+	function(input, processed)
 
-	-- Если Roblox уже обработал ввод,
-	-- не вмешиваемся.
-	if processed then
-		return
+		if processed then
+			return
+		end
+
+		if input.KeyCode == AIM_KEY then
+
+			AIM_HOLDING = true
+
+			return
+		end
+
+		if input.KeyCode == MENU_KEY then
+
+			Main.Visible =
+				not Main.Visible
+
+			return
+		end
 	end
-
-	-- Left Alt = удерживать NPC lock
-	if input.KeyCode ==
-		AIM_KEY then
-
-		AIM_HOLDING =
-			true
-
-		return
-	end
-
-	-- Right Alt = меню
-	if input.KeyCode ==
-		MENU_KEY then
-
-		Main.Visible =
-			not Main.Visible
-
-		return
-	end
-end)
+)
 
 UserInputService.InputEnded:Connect(
 	function(input)
 
-		if input.KeyCode ==
-			AIM_KEY then
+		if input.KeyCode == AIM_KEY then
 
-			AIM_HOLDING =
-				false
-
-			CurrentNPC =
-				nil
-
-			Reticle.Visible =
-				false
+			AIM_HOLDING = false
+			CurrentTarget = nil
+			Reticle.Visible = false
 		end
 	end
 )
@@ -1054,79 +784,35 @@ UserInputService.InputEnded:Connect(
 -- PLAYER EVENTS
 --========================================================--
 
-local function setupPlayer(
-	player
-)
+local function setupPlayer(player)
 
-	if player ==
-		LocalPlayer then
-
+	if player == LocalPlayer then
 		return
 	end
 
 	player.CharacterAdded:Connect(
 		function()
 
-			task.wait(
-				0.5
-			)
+			task.wait(0.25)
 
-			createESP(
-				player
-			)
+			createESP(player)
 		end
 	)
 
 	player.CharacterRemoving:Connect(
 		function()
 
-			removeESP(
-				player
-			)
+			removeESP(player)
 		end
 	)
 
-	-- Обычная Roblox Team
 	player:GetPropertyChangedSignal(
 		"Team"
 	):Connect(
 		function()
 
 			if TEAM_CHECK_ENABLED then
-
-				createESP(
-					player
-				)
-			end
-		end
-	)
-
-	-- TeamColor как запасной вариант
-	player:GetPropertyChangedSignal(
-		"TeamColor"
-	):Connect(
-		function()
-
-			if TEAM_CHECK_ENABLED then
-
-				createESP(
-					player
-				)
-			end
-		end
-	)
-
-	-- Если игра меняет Team через Attribute
-	player:GetAttributeChangedSignal(
-		"Team"
-	):Connect(
-		function()
-
-			if TEAM_CHECK_ENABLED then
-
-				createESP(
-					player
-				)
+				createESP(player)
 			end
 		end
 	)
@@ -1136,9 +822,7 @@ for _, player in ipairs(
 	Players:GetPlayers()
 ) do
 
-	setupPlayer(
-		player
-	)
+	setupPlayer(player)
 end
 
 Players.PlayerAdded:Connect(
@@ -1148,15 +832,9 @@ Players.PlayerAdded:Connect(
 Players.PlayerRemoving:Connect(
 	function(player)
 
-		removeESP(
-			player
-		)
+		removeESP(player)
 	end
 )
-
---========================================================--
--- LOCAL PLAYER TEAM CHANGE
---========================================================--
 
 LocalPlayer:GetPropertyChangedSignal(
 	"Team"
@@ -1164,42 +842,17 @@ LocalPlayer:GetPropertyChangedSignal(
 	function()
 
 		if TEAM_CHECK_ENABLED then
-
-			refreshESP()
-		end
-	end
-)
-
-LocalPlayer:GetPropertyChangedSignal(
-	"TeamColor"
-):Connect(
-	function()
-
-		if TEAM_CHECK_ENABLED then
-
-			refreshESP()
-		end
-	end
-)
-
-LocalPlayer:GetAttributeChangedSignal(
-	"Team"
-):Connect(
-	function()
-
-		if TEAM_CHECK_ENABLED then
-
 			refreshESP()
 		end
 	end
 )
 
 --========================================================--
--- MAIN LOOP
+-- RENDER
 --========================================================--
 
 RunService:BindToRenderStep(
-	"NPC_Reticle_Lock",
+	"NPC_Reticle",
 	Enum.RenderPriority.Last.Value,
 	function()
 
@@ -1210,7 +863,6 @@ RunService:BindToRenderStep(
 			return
 		end
 
-		-- Центр FOV
 		local viewport =
 			camera.ViewportSize
 
@@ -1220,8 +872,7 @@ RunService:BindToRenderStep(
 				viewport.Y / 2
 			)
 
-		-- NPC reticle
-		updateNPCReticle()
+		updateReticle()
 	end
 )
 
@@ -1231,11 +882,6 @@ RunService:BindToRenderStep(
 
 updateButtons()
 
-FOV.Visible =
-	false
-
-Reticle.Visible =
-	false
-
-Main.Visible =
-	true
+FOV.Visible = false
+Reticle.Visible = false
+Main.Visible = true
