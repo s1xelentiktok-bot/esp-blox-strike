@@ -1,45 +1,26 @@
 --========================================================--
---                 ADVANCED GAME ESP                     --
---              + TEAM CHECK + NPC LOCK                  --
---========================================================--
---
--- LocalScript
--- StarterPlayer > StarterPlayerScripts
---
--- CONTROLS:
--- Left Alt  = hold NPC lock
--- Right Alt = show / hide menu
---
--- SETUP:
--- workspace
---   └── NPCs
---       ├── NPC / Dummy / Bot ...
---
--- NPCs should contain a Humanoid and preferably:
--- HumanoidRootPart / UpperTorso / Torso / Chest
---
+--           BLOX STRIKE - ADVANCED ESP & AIMLOCK         --
 --========================================================--
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local AIM_HOLDING = false
 
 --========================================================--
 -- CONFIG
 --========================================================--
 
 local Config = {
-
 	ESP = {
 		Enabled = false,
-
-		FillColor = Color3.fromRGB(255, 60, 60),
-		FillTransparency = 0.78,
-
+		FillColor = Color3.fromRGB(255, 55, 55),
+		FillTransparency = 0.75,
 		OutlineColor = Color3.fromRGB(255, 255, 255),
 		OutlineTransparency = 0,
 	},
@@ -50,18 +31,8 @@ local Config = {
 
 	Aim = {
 		Enabled = false,
-
-		FOVRadius = 300,
-
-		-- Как часто пересчитывать цель.
-		-- 30 раз/сек достаточно и почти не грузит CPU.
-		TargetRefreshRate = 1 / 30,
-
-		-- Максимальная дистанция для NPC.
-		MaxDistance = 1500,
-
-		-- Сохранять текущую цель, пока она допустима.
-		StickyTarget = true,
+		FOVRadius = 250,
+		MaxDistance = 2000,
 	},
 
 	Keys = {
@@ -70,60 +41,38 @@ local Config = {
 	},
 
 	UI = {
-		MenuPosition = UDim2.fromOffset(20, 20),
-	},
-
-	NPC = {
-		FolderName = "NPCs",
-
-		-- Можно также помечать NPC тегом "LockableNPC".
-		TagName = "LockableNPC",
+		MenuPosition = UDim2.fromOffset(25, 25),
 	},
 }
 
 --========================================================--
--- CAMERA
+-- CAMERA & STORAGE
 --========================================================--
 
 local Camera = workspace.CurrentCamera
 
 local function getCamera()
-	Camera = workspace.CurrentCamera
+	Camera = workspace.CurrentCamera or workspace:FindFirstChildOfClass("Camera")
 	return Camera
 end
 
---========================================================--
--- NPC SOURCE
---========================================================--
-
-local NPCFolder = workspace:FindFirstChild(Config.NPC.FolderName)
-
--- Не создаём папку автоматически, чтобы случайно
--- не считать пустую папку игровой системой NPC.
-if not NPCFolder then
-	NPCFolder = nil
+-- Удаляем старый ESP если скрипт перезапускался
+if workspace:FindFirstChild("BloxStrikeESP") then
+	workspace.BloxStrikeESP:Destroy()
 end
 
---========================================================--
--- ESP STORAGE
---========================================================--
-
 local ESPFolder = Instance.new("Folder")
-ESPFolder.Name = "GameESP"
+ESPFolder.Name = "BloxStrikeESP"
 ESPFolder.Parent = workspace
 
 local ESPObjects = {}
 
 --========================================================--
--- TEAM CHECK
+-- TEAM CHECK LOGIC
 --========================================================--
 
-local function areEnemies(playerA, playerB)
-	if not playerA or not playerB then
-		return false
-	end
-
-	if playerA == playerB then
+local function isEnemy(player)
+	if not player or player == LocalPlayer then
 		return false
 	end
 
@@ -131,96 +80,207 @@ local function areEnemies(playerA, playerB)
 		return true
 	end
 
-	-- Основной, нормальный Roblox-вариант.
-	if playerA.Team ~= nil and playerB.Team ~= nil then
-		return playerA.Team ~= playerB.Team
+	if LocalPlayer.Team ~= nil and player.Team ~= nil then
+		return LocalPlayer.Team ~= player.Team
 	end
 
-	-- Если команда ещё не назначена,
-	-- не считаем игрока врагом.
-	return false
-end
+	if LocalPlayer.TeamColor and player.TeamColor then
+		return LocalPlayer.TeamColor ~= player.TeamColor
+	end
 
-local function isEnemy(player)
-	return areEnemies(LocalPlayer, player)
+	return true
 end
 
 --========================================================--
--- ESP
+-- ESP SYSTEM
 --========================================================--
 
 local function removeESP(player)
 	local data = ESPObjects[player]
-
-	if not data then
-		return
+	if data then
+		if data.Highlight then
+			data.Highlight:Destroy()
+		end
+		ESPObjects[player] = nil
 	end
-
-	if data.Highlight then
-		data.Highlight:Destroy()
-	end
-
-	ESPObjects[player] = nil
 end
 
 local function createESP(player)
 	removeESP(player)
 
-	if not Config.ESP.Enabled then
-		return
-	end
-
-	if not isEnemy(player) then
-		return
-	end
+	if not Config.ESP.Enabled or not isEnemy(player) then return end
 
 	local character = player.Character
-	if not character then
-		return
-	end
+	if not character or not character:FindFirstChildOfClass("Humanoid") then return end
 
 	local highlight = Instance.new("Highlight")
-	highlight.Name = "PlayerESP"
+	highlight.Name = "ESP_" .. player.Name
 	highlight.Adornee = character
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-
 	highlight.FillColor = Config.ESP.FillColor
 	highlight.FillTransparency = Config.ESP.FillTransparency
-
 	highlight.OutlineColor = Config.ESP.OutlineColor
 	highlight.OutlineTransparency = Config.ESP.OutlineTransparency
-
 	highlight.Parent = ESPFolder
 
-	ESPObjects[player] = {
-		Highlight = highlight,
-	}
+	ESPObjects[player] = { Highlight = highlight }
 end
 
 local function refreshESP()
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer then
-			createESP(player)
+			if Config.ESP.Enabled and isEnemy(player) then
+				createESP(player)
+			else
+				removeESP(player)
+			end
 		end
 	end
 end
 
 --========================================================--
--- GUI HELPERS
+-- AIMLOCK LOGIC (BODY TARGET + THROUGH WALLS)
 --========================================================--
 
+local function getTargetBodyPart(character)
+	if not character then return nil end
+	return character:FindFirstChild("UpperTorso") 
+		or character:FindFirstChild("Torso") 
+		or character:FindFirstChild("HumanoidRootPart")
+end
+
+local function getClosestEnemyPlayer()
+	local cam = getCamera()
+	if not cam then return nil end
+
+	local mousePos = UserInputService:GetMouseLocation()
+	local closestPart = nil
+	local shortestDistance = Config.Aim.FOVRadius
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if isEnemy(player) and player.Character then
+			local char = player.Character
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
+			local targetPart = getTargetBodyPart(char)
+
+			if humanoid and humanoid.Health > 0 and targetPart then
+				local myChar = LocalPlayer.Character
+				local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+				
+				local dist3D = myRoot and (targetPart.Position - myRoot.Position).Magnitude or 0
+				if dist3D <= Config.Aim.MaxDistance then
+					local screenPos, onScreen = cam:WorldToViewportPoint(targetPart.Position)
+					
+					if onScreen then
+						local screenVec = Vector2.new(screenPos.X, screenPos.Y)
+						local distanceToMouse = (screenVec - mousePos).Magnitude
+
+						if distanceToMouse < shortestDistance then
+							shortestDistance = distanceToMouse
+							closestPart = targetPart
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return closestPart
+end
+
+--========================================================--
+-- GUI INITIALIZATION
+--========================================================--
+
+if PlayerGui:FindFirstChild("BloxStrikeGui") then
+	PlayerGui.BloxStrikeGui:Destroy()
+end
+
 local Gui = Instance.new("ScreenGui")
-Gui.Name = "GameESPMenu"
+Gui.Name = "BloxStrikeGui"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 Gui.Parent = PlayerGui
 
+--========================================================--
+-- WELCOME NOTIFICATION (ВСПЛЫВАЮЩЕЕ ПРИВЕТСТВИЕ)
+--========================================================--
+
+local WelcomeFrame = Instance.new("Frame")
+WelcomeFrame.Name = "WelcomeFrame"
+WelcomeFrame.Size = UDim2.fromOffset(320, 65)
+WelcomeFrame.Position = UDim2.new(0.5, -160, 0.4, 0)
+WelcomeFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+WelcomeFrame.BackgroundTransparency = 1
+WelcomeFrame.BorderSizePixel = 0
+WelcomeFrame.ZIndex = 100
+WelcomeFrame.Parent = Gui
+
+local WelcomeCorner = Instance.new("UICorner")
+WelcomeCorner.CornerRadius = UDim.new(0, 12)
+WelcomeCorner.Parent = WelcomeFrame
+
+local WelcomeStroke = Instance.new("UIStroke")
+WelcomeStroke.Thickness = 1.5
+WelcomeStroke.Color = Color3.fromRGB(255, 60, 60)
+WelcomeStroke.Transparency = 1
+WelcomeStroke.Parent = WelcomeFrame
+
+local WelcomeTitle = Instance.new("TextLabel")
+WelcomeTitle.Size = UDim2.new(1, 0, 0.5, 0)
+WelcomeTitle.Position = UDim2.fromScale(0, 0.1)
+WelcomeTitle.BackgroundTransparency = 1
+WelcomeTitle.Text = "BLOX STRIKE"
+WelcomeTitle.TextColor3 = Color3.fromRGB(255, 60, 60)
+WelcomeTitle.TextSize = 18
+WelcomeTitle.Font = Enum.Font.GothamBold
+WelcomeTitle.TextTransparency = 1
+WelcomeTitle.ZIndex = 101
+WelcomeTitle.Parent = WelcomeFrame
+
+local WelcomeSub = Instance.new("TextLabel")
+WelcomeSub.Size = UDim2.new(1, 0, 0.4, 0)
+WelcomeSub.Position = UDim2.fromScale(0, 0.55)
+WelcomeSub.BackgroundTransparency = 1
+WelcomeSub.Text = "Script Successfully Loaded!"
+WelcomeSub.TextColor3 = Color3.fromRGB(220, 220, 220)
+WelcomeSub.TextSize = 13
+WelcomeSub.Font = Enum.Font.GothamMedium
+WelcomeSub.TextTransparency = 1
+WelcomeSub.ZIndex = 101
+WelcomeSub.Parent = WelcomeFrame
+
+-- Анимация всплытия приветствия
+task.spawn(function()
+	local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	
+	TweenService:Create(WelcomeFrame, tweenInfo, {BackgroundTransparency = 0.15, Position = UDim2.new(0.5, -160, 0.45, 0)}):Play()
+	TweenService:Create(WelcomeStroke, tweenInfo, {Transparency = 0}):Play()
+	TweenService:Create(WelcomeTitle, tweenInfo, {TextTransparency = 0}):Play()
+	TweenService:Create(WelcomeSub, tweenInfo, {TextTransparency = 0}):Play()
+
+	task.wait(2.5)
+
+	local tweenOut = TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+	TweenService:Create(WelcomeFrame, tweenOut, {BackgroundTransparency = 1, Position = UDim2.new(0.5, -160, 0.4, 0)}):Play()
+	TweenService:Create(WelcomeStroke, tweenOut, {Transparency = 1}):Play()
+	TweenService:Create(WelcomeTitle, tweenOut, {TextTransparency = 1}):Play()
+	TweenService:Create(WelcomeSub, tweenOut, {TextTransparency = 1}):Play()
+
+	task.wait(0.5)
+	WelcomeFrame:Destroy()
+end)
+
+--========================================================--
+-- MAIN MENU (LEFT TOP)
+--========================================================--
+
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.fromOffset(310, 250)
+Main.Size = UDim2.fromOffset(260, 255)
 Main.Position = Config.UI.MenuPosition
-Main.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.ZIndex = 10
@@ -231,36 +291,39 @@ MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = Main
 
 local MainStroke = Instance.new("UIStroke")
-MainStroke.Thickness = 1
-MainStroke.Color = Color3.fromRGB(65, 65, 75)
+MainStroke.Thickness = 1.5
+MainStroke.Color = Color3.fromRGB(45, 45, 55)
 MainStroke.Parent = Main
 
---========================================================--
--- TITLE BAR
---========================================================--
-
+-- Title Header
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
-Title.Size = UDim2.new(1, -20, 0, 36)
-Title.Position = UDim2.fromOffset(10, 5)
+Title.Size = UDim2.new(1, -20, 0, 40)
+Title.Position = UDim2.fromOffset(12, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "GAME ESP / NPC LOCK"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.TextSize = 21
+Title.Text = "BLOX STRIKE"
+Title.TextColor3 = Color3.fromRGB(255, 60, 60)
+Title.TextSize = 17
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.ZIndex = 11
 Title.Parent = Main
 
---========================================================--
--- DRAGGING
---========================================================--
+local TitleSub = Instance.new("TextLabel")
+TitleSub.Size = UDim2.new(1, -20, 0, 40)
+TitleSub.Position = UDim2.fromOffset(120, 0)
+TitleSub.BackgroundTransparency = 1
+TitleSub.Text = "|  CHEAT MENU"
+TitleSub.TextColor3 = Color3.fromRGB(130, 130, 140)
+TitleSub.TextSize = 13
+TitleSub.Font = Enum.Font.GothamMedium
+TitleSub.TextXAlignment = Enum.TextXAlignment.Left
+TitleSub.ZIndex = 11
+TitleSub.Parent = Main
 
+-- Перетаскивание Меню
 do
-	local dragging = false
-	local dragStart
-	local startPosition
-
+	local dragging, dragStart, startPosition
 	Title.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
@@ -268,110 +331,90 @@ do
 			startPosition = Main.Position
 		end
 	end)
-
 	Title.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = false
 		end
 	end)
-
 	UserInputService.InputChanged:Connect(function(input)
-		if not dragging then
-			return
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Position - dragStart
+			Main.Position = UDim2.new(
+				startPosition.X.Scale,
+				startPosition.X.Offset + delta.X,
+				startPosition.Y.Scale,
+				startPosition.Y.Offset + delta.Y
+			)
 		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement then
-			return
-		end
-
-		local delta = input.Position - dragStart
-
-		Main.Position = UDim2.new(
-			startPosition.X.Scale,
-			startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale,
-			startPosition.Y.Offset + delta.Y
-		)
 	end)
 end
 
---========================================================--
--- BUTTONS
---========================================================--
-
+-- Кнопки
 local function createButton(name, y)
 	local button = Instance.new("TextButton")
-
 	button.Name = name
-	button.Size = UDim2.new(1, -20, 0, 38)
-	button.Position = UDim2.fromOffset(10, y)
-
-	button.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
+	button.Size = UDim2.new(1, -24, 0, 36)
+	button.Position = UDim2.fromOffset(12, y)
+	button.BackgroundColor3 = Color3.fromRGB(32, 24, 28)
 	button.BorderSizePixel = 0
-
-	button.TextColor3 = Color3.fromRGB(255, 90, 90)
-	button.TextSize = 15
+	button.TextColor3 = Color3.fromRGB(255, 80, 80)
+	button.TextSize = 13
 	button.Font = Enum.Font.GothamBold
-
-	button.Active = true
-	button.Selectable = true
-	button.AutoButtonColor = true
 	button.ZIndex = 20
-
+	button.AutoButtonColor = false
 	button.Parent = Main
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 7)
+	corner.CornerRadius = UDim.new(0, 6)
 	corner.Parent = button
 
-	return button
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 1
+	stroke.Color = Color3.fromRGB(70, 35, 35)
+	stroke.Parent = button
+
+	return button, stroke
 end
 
-local ESPButton = createButton("ESP", 45)
-local TeamButton = createButton("Team", 88)
-local AimButton = createButton("Aim", 131)
+local ESPButton, ESPStroke = createButton("ESP", 45)
+local TeamButton, TeamStroke = createButton("Team", 88)
+local AimButton, AimStroke = createButton("Aim", 131)
 
 local Info = Instance.new("TextLabel")
-Info.Size = UDim2.new(1, -20, 0, 45)
-Info.Position = UDim2.fromOffset(10, 176)
+Info.Size = UDim2.new(1, -24, 0, 40)
+Info.Position = UDim2.fromOffset(12, 180)
 Info.BackgroundTransparency = 1
-
-Info.Text = "Left Alt — NPC LOCK\nRight Alt — MENU"
-Info.TextColor3 = Color3.fromRGB(150, 150, 155)
+Info.Text = "[Left Alt] — Hold Aim Lock\n[Right Alt] — Hide / Show Menu"
+Info.TextColor3 = Color3.fromRGB(110, 110, 120)
 Info.TextSize = 11
 Info.Font = Enum.Font.Gotham
 Info.TextXAlignment = Enum.TextXAlignment.Left
 Info.ZIndex = 11
 Info.Parent = Main
 
-local function updateButton(button, title, enabled)
+local function updateButton(button, stroke, title, enabled)
+	local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	if enabled then
-		button.Text = title .. ": ON"
-		button.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
-		button.TextColor3 = Color3.fromRGB(90, 255, 110)
+		button.Text = title .. "  [ ON ]"
+		TweenService:Create(button, tweenInfo, {BackgroundColor3 = Color3.fromRGB(24, 45, 32), TextColor3 = Color3.fromRGB(80, 255, 140)}):Play()
+		TweenService:Create(stroke, tweenInfo, {Color = Color3.fromRGB(40, 120, 65)}):Play()
 	else
-		button.Text = title .. ": OFF"
-		button.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
-		button.TextColor3 = Color3.fromRGB(255, 90, 90)
+		button.Text = title .. "  [ OFF ]"
+		TweenService:Create(button, tweenInfo, {BackgroundColor3 = Color3.fromRGB(38, 24, 28), TextColor3 = Color3.fromRGB(255, 80, 80)}):Play()
+		TweenService:Create(stroke, tweenInfo, {Color = Color3.fromRGB(90, 35, 35)}):Play()
 	end
 end
 
 local function updateButtons()
-	updateButton(ESPButton, "ESP", Config.ESP.Enabled)
-	updateButton(TeamButton, "TEAM CHECK", Config.TeamCheck.Enabled)
-	updateButton(AimButton, "NPC LOCK", Config.Aim.Enabled)
+	updateButton(ESPButton, ESPStroke, "PLAYER ESP", Config.ESP.Enabled)
+	updateButton(TeamButton, TeamStroke, "TEAM CHECK", Config.TeamCheck.Enabled)
+	updateButton(AimButton, AimStroke, "AIM LOCK", Config.Aim.Enabled)
 end
 
---========================================================--
--- FOV
---========================================================--
-
+-- FOV Circle
 local FOV = Instance.new("Frame")
 FOV.Name = "FOV"
-FOV.Size = UDim2.fromOffset(
-	Config.Aim.FOVRadius * 2,
-	Config.Aim.FOVRadius * 2
-)
+FOV.Size = UDim2.fromOffset(Config.Aim.FOVRadius * 2, Config.Aim.FOVRadius * 2)
 FOV.AnchorPoint = Vector2.new(0.5, 0.5)
 FOV.BackgroundTransparency = 1
 FOV.Visible = false
@@ -383,396 +426,68 @@ FOVCorner.CornerRadius = UDim.new(1, 0)
 FOVCorner.Parent = FOV
 
 local FOVStroke = Instance.new("UIStroke")
-FOVStroke.Thickness = 2
-FOVStroke.Transparency = 0.2
+FOVStroke.Thickness = 1.2
+FOVStroke.Transparency = 0.4
 FOVStroke.Color = Color3.fromRGB(255, 255, 255)
 FOVStroke.Parent = FOV
 
 --========================================================--
--- RETICLE
---========================================================--
-
-local Reticle = Instance.new("Frame")
-Reticle.Name = "NPCReticle"
-Reticle.Size = UDim2.fromOffset(14, 14)
-Reticle.AnchorPoint = Vector2.new(0.5, 0.5)
-Reticle.BackgroundTransparency = 1
-Reticle.Visible = false
-Reticle.ZIndex = 100
-Reticle.Parent = Gui
-
-local ReticleCorner = Instance.new("UICorner")
-ReticleCorner.CornerRadius = UDim.new(1, 0)
-ReticleCorner.Parent = Reticle
-
-local ReticleStroke = Instance.new("UIStroke")
-ReticleStroke.Thickness = 2
-ReticleStroke.Color = Color3.fromRGB(255, 70, 70)
-ReticleStroke.Parent = Reticle
-
---========================================================--
--- NPC CACHE
---========================================================--
-
-local NPCs = {}
-
-local function getNPCBodyPart(model)
-	if not model then
-		return nil
-	end
-
-	-- Предпочтительно центр тела.
-	local preferredNames = {
-		"HumanoidRootPart",
-		"UpperTorso",
-		"Torso",
-		"Chest",
-		"Body",
-		"Root",
-		"Pelvis",
-	}
-
-	for _, name in ipairs(preferredNames) do
-		local part = model:FindFirstChild(name, true)
-
-		if part and part:IsA("BasePart") then
-			return part
-		end
-	end
-
-	return model:FindFirstChildWhichIsA("BasePart", true)
-end
-
-local function tryRegisterNPC(model)
-	if not model or not model:IsA("Model") then
-		return
-	end
-
-	if Players:GetPlayerFromCharacter(model) then
-		return
-	end
-
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid then
-		return
-	end
-
-	local part = getNPCBodyPart(model)
-
-	if not part then
-		return
-	end
-
-	NPCs[model] = {
-		Model = model,
-		Humanoid = humanoid,
-		Part = part,
-	}
-end
-
-local function unregisterNPC(model)
-	NPCs[model] = nil
-end
-
--- NPC source from Folder.
-if NPCFolder then
-	for _, object in ipairs(NPCFolder:GetChildren()) do
-		tryRegisterNPC(object)
-	end
-
-	NPCFolder.ChildAdded:Connect(function(object)
-		task.defer(tryRegisterNPC, object)
-	end)
-
-	NPCFolder.ChildRemoved:Connect(function(object)
-		unregisterNPC(object)
-	end)
-end
-
--- Optional CollectionService support:
--- Tag an NPC with "LockableNPC".
-for _, object in ipairs(
-	CollectionService:GetTagged(Config.NPC.TagName)
-) do
-	tryRegisterNPC(object)
-end
-
-CollectionService:GetInstanceAddedSignal(
-	Config.NPC.TagName
-):Connect(function(object)
-	tryRegisterNPC(object)
-end)
-
-CollectionService:GetInstanceRemovedSignal(
-	Config.NPC.TagName
-):Connect(function(object)
-	unregisterNPC(object)
-end)
-
---========================================================--
--- AIM TARGET
---========================================================--
-
-local CurrentTarget = nil
-local TargetRefreshTimer = 0
-
-local function targetIsValid(part)
-	if not part or not part.Parent then
-		return false
-	end
-
-	for model, data in pairs(NPCs) do
-		if data.Part == part and model.Parent then
-			if data.Humanoid and data.Humanoid.Health > 0 then
-				return true
-			end
-		end
-	end
-
-	return false
-end
-
-local function getClosestNPC()
-	local camera = getCamera()
-
-	if not camera then
-		return nil
-	end
-
-	local center = Vector2.new(
-		camera.ViewportSize.X / 2,
-		camera.ViewportSize.Y / 2
-	)
-
-	local bestPart = nil
-	local bestDistance = Config.Aim.FOVRadius
-
-	local cameraPosition = camera.CFrame.Position
-
-	for model, data in pairs(NPCs) do
-		if not model.Parent then
-			NPCs[model] = nil
-			continue
-		end
-
-		local humanoid = data.Humanoid
-		local part = data.Part
-
-		if not humanoid
-			or not humanoid.Parent
-			or not part
-			or not part.Parent then
-
-			NPCs[model] = nil
-			continue
-		end
-
-		if humanoid.Health <= 0 then
-			continue
-		end
-
-		local worldDistance =
-			(part.Position - cameraPosition).Magnitude
-
-		if worldDistance >
-			Config.Aim.MaxDistance then
-
-			continue
-		end
-
-		local screen, visible =
-			camera:WorldToViewportPoint(part.Position)
-
-		if not visible or screen.Z <= 0 then
-			continue
-		end
-
-		local screenPosition =
-			Vector2.new(screen.X, screen.Y)
-
-		local screenDistance =
-			(screenPosition - center).Magnitude
-
-		if screenDistance < bestDistance then
-			bestDistance = screenDistance
-			bestPart = part
-		end
-	end
-
-	return bestPart
-end
-
---========================================================--
--- TARGET UPDATE
---========================================================--
-
-local function updateTarget(dt)
-	if not Config.Aim.Enabled
-		or not AIM_HOLDING then
-
-		CurrentTarget = nil
-		return
-	end
-
-	TargetRefreshTimer += dt
-
-	if TargetRefreshTimer <
-		Config.Aim.TargetRefreshRate then
-
-		return
-	end
-
-	TargetRefreshTimer = 0
-
-	if Config.Aim.StickyTarget
-		and targetIsValid(CurrentTarget) then
-
-		local camera = getCamera()
-
-		if camera then
-			local screen, visible =
-				camera:WorldToViewportPoint(
-					CurrentTarget.Position
-				)
-
-			if visible and screen.Z > 0 then
-				local center = Vector2.new(
-					camera.ViewportSize.X / 2,
-					camera.ViewportSize.Y / 2
-				)
-
-				local position = Vector2.new(
-					screen.X,
-					screen.Y
-				)
-
-				if (position - center).Magnitude
-					<= Config.Aim.FOVRadius then
-
-					return
-				end
-			end
-		end
-	end
-
-	CurrentTarget = getClosestNPC()
-end
-
---========================================================--
--- RETICLE
---========================================================--
-
-local function updateReticle()
-	if not Config.Aim.Enabled
-		or not AIM_HOLDING
-		or not targetIsValid(CurrentTarget) then
-
-		Reticle.Visible = false
-		return
-	end
-
-	local camera = getCamera()
-
-	if not camera then
-		Reticle.Visible = false
-		return
-	end
-
-	local screen, visible =
-		camera:WorldToViewportPoint(
-			CurrentTarget.Position
-		)
-
-	if not visible or screen.Z <= 0 then
-		Reticle.Visible = false
-		return
-	end
-
-	Reticle.Position =
-		UDim2.fromOffset(
-			screen.X,
-			screen.Y
-		)
-
-	Reticle.Visible = true
-end
-
---========================================================--
--- BUTTONS
+-- BUTTON EVENTS
 --========================================================--
 
 ESPButton.MouseButton1Click:Connect(function()
 	Config.ESP.Enabled = not Config.ESP.Enabled
-
 	refreshESP()
 	updateButtons()
 end)
 
 TeamButton.MouseButton1Click:Connect(function()
-	Config.TeamCheck.Enabled =
-		not Config.TeamCheck.Enabled
-
+	Config.TeamCheck.Enabled = not Config.TeamCheck.Enabled
 	refreshESP()
 	updateButtons()
 end)
 
 AimButton.MouseButton1Click:Connect(function()
-	Config.Aim.Enabled =
-		not Config.Aim.Enabled
-
+	Config.Aim.Enabled = not Config.Aim.Enabled
 	FOV.Visible = Config.Aim.Enabled
-
 	if not Config.Aim.Enabled then
 		AIM_HOLDING = false
-		CurrentTarget = nil
-		Reticle.Visible = false
 	end
-
 	updateButtons()
 end)
 
 --========================================================--
--- INPUT
+-- INPUT & TOGGLE MENU
 --========================================================--
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then
-		return
-	end
+	if processed then return end
 
 	if input.KeyCode == Config.Keys.Aim then
 		AIM_HOLDING = true
-		TargetRefreshTimer = Config.Aim.TargetRefreshRate
-		return
-	end
-
-	if input.KeyCode == Config.Keys.Menu then
+	elseif input.KeyCode == Config.Keys.Menu then
 		Main.Visible = not Main.Visible
-		return
 	end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == Config.Keys.Aim then
 		AIM_HOLDING = false
-		CurrentTarget = nil
-		Reticle.Visible = false
 	end
 end)
 
 --========================================================--
--- PLAYER SETUP
+-- LISTENERS
 --========================================================--
 
 local function setupPlayer(player)
-	if player == LocalPlayer then
-		return
-	end
+	if player == LocalPlayer then return end
 
 	player.CharacterAdded:Connect(function()
-		task.wait(0.2)
-		createESP(player)
+		task.wait(0.3)
+		if Config.ESP.Enabled then
+			createESP(player)
+		end
 	end)
 
 	player.CharacterRemoving:Connect(function()
@@ -780,9 +495,8 @@ local function setupPlayer(player)
 	end)
 
 	player:GetPropertyChangedSignal("Team"):Connect(function()
-		if Config.TeamCheck.Enabled then
-			createESP(player)
-		end
+		task.wait(0.1)
+		refreshESP()
 	end)
 end
 
@@ -791,51 +505,34 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerAdded:Connect(setupPlayer)
-
 Players.PlayerRemoving:Connect(function(player)
 	removeESP(player)
 end)
 
 LocalPlayer:GetPropertyChangedSignal("Team"):Connect(function()
-	if Config.TeamCheck.Enabled then
-		refreshESP()
-	end
+	task.wait(0.1)
+	refreshESP()
 end)
 
 --========================================================--
--- RENDER
+-- RENDER LOOP (AIMLOCK EXECUTION & FOV)
 --========================================================--
 
-RunService:BindToRenderStep(
-	"GameNPCOverlay",
-	Enum.RenderPriority.Last.Value,
-	function(dt)
-
-		local camera = getCamera()
-
-		if not camera then
-			return
-		end
-
-		local viewport = camera.ViewportSize
-
-		FOV.Position =
-			UDim2.fromOffset(
-				viewport.X / 2,
-				viewport.Y / 2
-			)
-
-		updateTarget(dt)
-		updateReticle()
+RunService.RenderStepped:Connect(function()
+	if Config.Aim.Enabled then
+		local mousePos = UserInputService:GetMouseLocation()
+		FOV.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
 	end
-)
 
---========================================================--
--- START
---========================================================--
+	if Config.Aim.Enabled and AIM_HOLDING then
+		local targetPart = getClosestEnemyPlayer()
+		if targetPart then
+			local cam = getCamera()
+			if cam then
+				cam.CFrame = CFrame.new(cam.CFrame.Position, targetPart.Position)
+			end
+		end
+	end
+end)
 
 updateButtons()
-
-FOV.Visible = false
-Reticle.Visible = false
-Main.Visible = true
